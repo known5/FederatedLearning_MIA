@@ -135,10 +135,10 @@ class CentralServer(object):
         """ Ja hier moet dus documentatie """
         # Do client training
         if self.is_mul:
-            with pool.ThreadPool(processes=cpu_count() - 6) as workers:
+            with pool.ThreadPool(processes=cpu_count() - 2) as workers:
                 workers.map(self.train_clients, self.clients)
 
-            with pool.ThreadPool(processes=cpu_count() - 6) as workers:
+            with pool.ThreadPool(processes=cpu_count() - 2) as workers:
                 workers.map(self.test_clients, self.clients)
 
         elif not self.is_mul:

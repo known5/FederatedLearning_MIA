@@ -1,7 +1,7 @@
 experiment_config:
   seed: 42
   device: "cpu"
-  is_multi_threaded: False
+  is_multi_threaded: True
   perform_attack: False
   evaluate_global_model: True
   global_eval_interval: 1
@@ -15,7 +15,7 @@ data_settings:
   iid: False
 ---
 FL_settings:
-  number_of_clients: 20
+  number_of_clients: 10
   training_rounds: 10
 ---
 training_settings:
