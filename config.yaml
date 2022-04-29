@@ -15,7 +15,7 @@ data_settings:
   iid: False
 ---
 FL_settings:
-  number_of_clients: 1
+  number_of_clients: 20
   training_rounds: 10
 ---
 training_settings:

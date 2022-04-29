@@ -43,9 +43,9 @@ class Client(object):
         """ Ja hier moet dus documentatie """
         train_set_size = int(len(training_data) * split_ratio)
         test_set_size = len(training_data) - train_set_size
-        train_set, test_set = torch.utils.data.random_split(training_data, [train_set_size, test_set_size])
+        train_set, self.data = torch.utils.data.random_split(training_data, [train_set_size, test_set_size])
         self.training_dataloader = DataLoader(train_set, batch_size=self.batch_size, shuffle=True, num_workers=0)
-        self.testing_dataloader = DataLoader(test_set, batch_size=self.batch_size, shuffle=True, num_workers=0)
+        self.testing_dataloader = DataLoader(self.data, batch_size=self.batch_size, shuffle=True, num_workers=0)
 
     def random_subset_of_training_data_for_attack(self, ratio):
         pass
@@ -95,4 +95,3 @@ class Client(object):
         self.local_results = {"loss": [], "accuracy": []}
         self.local_results['loss'].append(test_loss / len(self.testing_dataloader))
         self.local_results['accuracy'].append(correct / len(self.testing_dataloader.dataset.indices))
-

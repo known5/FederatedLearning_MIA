@@ -3,7 +3,7 @@ import torchvision.models as models
 import torchvision.transforms as transforms
 import torch.optim as optimizers
 import torch.nn as nn
-from src.models import TestNet
+import src.models as ms
 
 
 def init_weights_normal(layer):
@@ -43,7 +43,7 @@ def load_model(model_name, is_local_model, is_pretrained):
     """ Ja hier moet dus documentatie """
     model = None
     if is_local_model:
-        model = TestNet()
+        model = ms.AlexNet()
     else:
         if not hasattr(models, model_name):
             error_message = f"...model \"{model_name}\" is not supported or cannot be found in TorchVision models!"
