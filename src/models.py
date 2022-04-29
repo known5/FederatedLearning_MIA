@@ -5,6 +5,35 @@ import torch
 from src.utils import *
 
 
+class TestNetCNN(nn.Module):
+
+    def __init__(self, input_channels=3, output_classes=100):
+        super(TestNetCNN, self).__init__()
+        self.cnn = nn.Sequential(
+            nn.Conv2d(in_channels=input_channels,
+                      out_channels=6,
+                      kernel_size=3,
+                      padding=1),
+            nn.Conv2d(in_channels=6,
+                      out_channels=9,
+                      kernel_size=3,
+                      padding=1)
+        )
+        self.flatten = nn.Flatten()
+        self.classifier = nn.Sequential(
+            nn.Linear(9216, 2048),
+            nn.ReLU(),
+            nn.Linear(2048, 256),
+            nn.ReLU(),
+            nn.Linear(256, output_classes)
+        )
+
+    def forward(self, x):
+        x = self.cnn(x)
+        x = self.flatten(x)
+        return self.classifier(x)
+
+
 class TestNet(nn.Module):
 
     def __init__(self, input_size=3 * 32 * 32, output_classes=100):

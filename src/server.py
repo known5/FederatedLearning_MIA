@@ -64,7 +64,9 @@ class CentralServer(object):
                                                               self.is_idd)
         self.dataloader = DataLoader(self.test_data,
                                      batch_size=self.batch_size,
-                                     shuffle=False)
+                                     shuffle=False,
+                                     pin_memory=False
+                                     )
 
         self.model = load_model(self.model_param['name'],
                                 self.model_param['is_local_model'],
