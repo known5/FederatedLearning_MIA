@@ -3,7 +3,7 @@ import torchvision.models as models
 import torchvision.transforms as transforms
 import torch.optim as optimizers
 import torch.nn as nn
-from src.models import AlexNet
+from src.models import TestNet
 
 
 def init_weights_normal(layer):
@@ -18,14 +18,12 @@ def select_transformation(data_name):
     transform_train, transform_test = None, None
     if data_name in ["CIFAR100"]:
         transform_train = transforms.Compose([
-            transforms.Resize(224),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
         ])
 
         transform_test = transforms.Compose([
-            transforms.Resize(224),
             transforms.ToTensor(),
             transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
         ])
@@ -43,17 +41,15 @@ def select_transformation(data_name):
 
 def load_model(model_name, is_local_model, is_pretrained):
     """ Ja hier moet dus documentatie """
-    print("Loading models... ")
     model = None
     if is_local_model:
-        model = AlexNet()
+        model = TestNet()
     else:
         if not hasattr(models, model_name):
             error_message = f"...model \"{model_name}\" is not supported or cannot be found in TorchVision models!"
             raise AttributeError(error_message)
         else:
             model = models.__dict__[model_name](is_pretrained)
-    print(f"Successfully loaded model: \"{model_name}\"...")
     return model
 
 

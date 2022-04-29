@@ -1,5 +1,5 @@
 import copy
-from tqdm import tqdm
+import time
 import torch
 from torch.utils.data import DataLoader
 from multiprocessing import pool, cpu_count
@@ -22,7 +22,10 @@ class CentralServer(object):
         self.device = experiment_param['device']
         self.is_mul = experiment_param['is_multi_threaded']
         self.perform_attack = experiment_param['perform_attack']
-        self.evaluate_global_model = experiment_param['evaluate_global_model']
+        self.always_evaluate_global_model = experiment_param['evaluate_global_model']
+        self.global_interval = experiment_param['global_eval_interval']
+        self.always_train_test = experiment_param['training_test']
+        self.local_interval = experiment_param['local_test_interval']
 
         self.dataset_path = data_param['data_path']
         self.dataset_name = data_param['dataset_name']
@@ -53,6 +56,8 @@ class CentralServer(object):
 
     def start_up(self):
         """ Ja hier moet dus documentatie """
+        torch.manual_seed(self.seed)
+
         split_datasets, self.test_data = self.divide_datasets(self.dataset_name,
                                                               self.dataset_path,
                                                               self.number_of_clients,
@@ -66,11 +71,9 @@ class CentralServer(object):
                                 self.model_param['is_pre_trained'])
         self.clients = self.generate_clients(self.training_param)
         self.distribute_data_among_clients(split_datasets, self.split_ratio)
-        self.share_model_with_clients()
 
     def generate_clients(self, training_param):
         """ Ja hier moet dus documentatie """
-        print("Generating clients..... ")
         attacker_is_generated = False
         clients = []
         for client_id, dataset in enumerate(range(self.number_of_clients)):
@@ -99,43 +102,56 @@ class CentralServer(object):
     def train_clients(client):
         client.train()
 
+    @staticmethod
+    def test_clients(client):
+        client.test()
+
     def share_model_with_clients(self):
         """ Ja hier moet dus documentatie """
-        print("Sending global model to clients...")
+        # print("Sending global model to clients...")
         for client in self.clients:
             client.model = copy.deepcopy(self.model)
-        print("Model sharing completed...")
+        # print("Model sharing completed...")
 
     def distribute_data_among_clients(self, split_datasets, split_ratio):
         """ Ja hier moet dus documentatie """
-        print("Loading datasets to clients...")
         for k, client in enumerate(self.clients):
             client.load_data(split_datasets[k], split_ratio)
-        print("Sharing datasets, completed...")
 
     def aggregate_model(self):
         """ Ja hier moet dus documentatie """
-        print("Aggregating models....")
+        # print("Aggregating models....")
         averaged_weights = OrderedDict()
-        for i, client_id in enumerate(self.number_of_clients):
+        for i, client_id in enumerate(range(self.number_of_clients)):
             local_weights = self.clients[client_id].model.state_dict()
-            for layer_id in self.model.dict().keys():
+            for layer_id in self.model.state_dict().keys():
                 if i == 0:
-                    averaged_weights[layer_id] = local_weights[layer_id]
+                    averaged_weights[layer_id] = local_weights[layer_id] * (1 / len(self.clients))
                 else:
-                    averaged_weights[layer_id] = local_weights[layer_id]
+                    averaged_weights[layer_id] += local_weights[layer_id] * (1 / len(self.clients))
         self.model.load_state_dict(averaged_weights)
 
-    def do_training(self):
+    def do_training(self, round):
         """ Ja hier moet dus documentatie """
-        # Share global model with all clients
-        self.share_model_with_clients()
         # Do client training
         if self.is_mul:
-            with pool.ThreadPool(processes=cpu_count() - 1) as workers:
+            with pool.ThreadPool(processes=cpu_count() - 6) as workers:
                 workers.map(self.train_clients, self.clients)
-        # Aggregate the model updates into a new global model
-        self.aggregate_model()
+
+            with pool.ThreadPool(processes=cpu_count() - 6) as workers:
+                workers.map(self.test_clients, self.clients)
+
+        elif not self.is_mul:
+            for client in self.clients:
+                client.train()
+                client.test()
+
+        if self.always_train_test or round % self.local_interval == 0:
+            print(f"[Round: {str(round).zfill(4)}] Evaluate LOCAL model's performance...!")
+            for client in self.clients:
+                print(f"\n\t[Client {str(client.client_id)}] ...finished evaluation!\
+                       \n\t=> Local Loss: {client.local_results.get('loss')[0]:.4f}\
+                       \n\t=> Local Accuracy: {100. * client.local_results.get('accuracy')[0]:.2f}%")
 
     def test_global_model(self):
         """ Ja hier moet dus documentatie """
@@ -155,29 +171,36 @@ class CentralServer(object):
 
         return test_loss / len(self.dataloader), correct / len(self.test_data)
 
-    def perform_experiment(self, perform_attack=False, evaluate_global_model=False):
+    def perform_experiment(self, start_time=None, perform_attack=False, evaluate_global_model=False):
         """ Ja hier moet dus documentatie """
-        round_counter = 0
-        for index in tqdm(range(self.number_of_training_rounds)):
+        for index in range(self.number_of_training_rounds):
+            round_time = time.time()
+            hours, rem = divmod(round_time - start_time, 3600)
+            minutes, seconds = divmod(rem, 60)
+            current_time = "{:0>2}:{:0>2}:{:05.2f}".format(int(hours), int(minutes), seconds)
+            print(f"[Round: {str(index).zfill(4)}] ... Started at {str(current_time)}")
+            print("\t[Server]: ... share model!]")
+            self.share_model_with_clients()
+            print("\t[Server]: ... perform training!]")
+            self.do_training(index)
+            print("\t[Server]: ... aggregate model!]")
+            self.aggregate_model()
+            # If checked, perform global model evaluation every round.
+            if evaluate_global_model or index % self.global_interval == 0:
+                round_loss, round_accuracy = self.test_global_model()
 
-            client = self.clients[1]
-            for data, labels in client.training_dataloader:
-                print(data[0])
-                break
+                self.results['loss'].append(round_loss)
+                self.results['accuracy'].append(round_accuracy)
 
-            # round_counter += index + 1
-            # self.do_training()
-            # # If checked, perform global model evaluation every round.
-            # if evaluate_global_model:
-            #     round_loss, round_accuracy = self.test_global_model()
-            #
-            #     self.results['loss'].append(round_loss)
-            #     self.results['accuracy'].append(round_accuracy)
-            #
-            #     print(f"[Round: {str(round_counter).zfill(4)}] Evaluate global model's performance...!\
-            #         \n\t[Server] ...finished evaluation!\
-            #         \n\t=> Loss: {round_loss:.4f}\
-            #         \n\t=> Accuracy: {100. * round_accuracy:.2f}%\n")
-            # # If checked, perform MIA during each round.
-            # if perform_attack:
-            #     pass
+                print(f"[Round: {str(index).zfill(4)}] Evaluate global model's performance...!\
+                    \n\t[Server] ...finished evaluation!\
+                    \n\t=> Loss: {round_loss:.4f}\
+                    \n\t=> Accuracy: {100. * round_accuracy:.2f}%")
+            # If checked, perform MIA during each round.
+            if perform_attack:
+                pass
+
+            hours, rem = divmod(time.time() - round_time, 3600)
+            minutes, seconds = divmod(rem, 60)
+            end_time = "{:0>2}:{:0>2}:{:05.2f}".format(int(hours), int(minutes), seconds)
+            print(f"[Round {str(index).zfill(4)} End] ... Round time: {str(end_time)} s/it")

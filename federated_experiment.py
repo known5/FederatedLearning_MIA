@@ -14,9 +14,7 @@ from src.server import CentralServer
 if __name__ == '__main__':
     start_time = time.time()
     print("Experiment started!")
-
     # read configuration file
-    print("Reading experiment configurations.......")
     with open('./config.yaml') as c:
         configs = list(yaml.load_all(c, Loader=yaml.FullLoader))
     experiment_config = configs[0]["experiment_config"]
@@ -37,7 +35,7 @@ if __name__ == '__main__':
                                 model_config,
                                 MIA_config)
     main_server.start_up()
-    main_server.perform_experiment()
+    main_server.perform_experiment(start_time, evaluate_global_model=experiment_config['evaluate_global_model'])
 
     hours, rem = divmod(time.time() - start_time, 3600)
     minutes, seconds = divmod(rem, 60)

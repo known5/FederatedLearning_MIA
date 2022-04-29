@@ -9,7 +9,7 @@ class Client(object):
         """ Ja hier moet dus documentatie """
         self.loss_function = training_param['loss_function']
         if not hasattr(nn, self.loss_function):
-            error_message = f"...Optimizer \"{self.loss_function}\" is not supported or cannot be found in Torch Optimizers!"
+            error_message = f"...Loss Function: \"{self.loss_function}\" is not supported or cannot be found in Torch Optimizers!"
             raise AttributeError(error_message)
         else:
             self.loss_function = nn.__dict__[self.loss_function]()
@@ -27,6 +27,7 @@ class Client(object):
         self.__model = None
         self.training_dataloader = None
         self.testing_dataloader = None
+        self.local_results = {"loss": [], "accuracy": []}
 
     @property
     def model(self):
@@ -52,8 +53,8 @@ class Client(object):
 
     def train(self):
         """ Ja hier moet dus documentatie """
-        self.model.train()
-        self.model.to(self.device)
+        self.__model.train()
+        self.__model.to(self.device)
 
         optimizer = optimizers.__dict__[self.optimizer](self.model.parameters(),
                                                         self.learning_rate,
@@ -75,5 +76,23 @@ class Client(object):
         self.model.to("cpu")
 
     def test(self):
-        """ Ja hier moet dus documentatie """
-        pass
+        self.__model.eval()
+        self.__model.to(self.device)
+
+        test_loss, correct = 0, 0
+        with torch.no_grad():
+            for data, labels in self.testing_dataloader:
+                data, labels = data.float().to(self.device), labels.long().to(self.device)
+                outputs = self.model(data)
+                test_loss += self.loss_function(outputs, labels)
+
+                predicted = outputs.argmax(dim=1, keepdim=True)
+                correct += predicted.eq(labels.view_as(predicted)).sum().item()
+                if self.device == "cuda":
+                    torch.cuda.empty_cache()
+        self.model.to("cpu")
+
+        self.local_results = {"loss": [], "accuracy": []}
+        self.local_results['loss'].append(test_loss / len(self.testing_dataloader))
+        self.local_results['accuracy'].append(correct / len(self.testing_dataloader.dataset.indices))
+

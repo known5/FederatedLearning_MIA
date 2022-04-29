@@ -1,36 +1,25 @@
 import torch.nn as nn
 import torch.nn.functional as F
+import torch
 
 from src.utils import *
 
 
-class AlexNet(nn.Module):
-    def __init__(self):
-        super(AlexNet, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=96, kernel_size=28, stride=4, padding=0)
-        self.maxpool = nn.MaxPool2d(kernel_size=1, stride=2)
-        self.conv2 = nn.Conv2d(in_channels=96, out_channels=256, kernel_size=5, stride=1, padding=2)
-        self.conv3 = nn.Conv2d(in_channels=256, out_channels=384, kernel_size=3, stride=1, padding=1)
-        self.conv4 = nn.Conv2d(in_channels=384, out_channels=384, kernel_size=3, stride=1, padding=1)
-        self.conv5 = nn.Conv2d(in_channels=384, out_channels=256, kernel_size=3, stride=1, padding=1)
-        self.fc1 = nn.Linear(in_features=256, out_features=4096)
-        self.fc2 = nn.Linear(in_features=4096, out_features=4096)
-        self.fc3 = nn.Linear(in_features=4096, out_features=10)
+class TestNet(nn.Module):
+
+    def __init__(self, input_size=3*32*32, output_classes=100):
+        super(TestNet, self).__init__()
+        self.net = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(input_size, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 256),
+            nn.ReLU(),
+            nn.Linear(256, output_classes)
+        )
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = self.maxpool(x)
-        x = F.relu(self.conv2(x))
-        x = self.maxpool(x)
-        x = F.relu(self.conv3(x))
-        x = F.relu(self.conv4(x))
-        x = F.relu(self.conv5(x))
-        x = self.maxpool(x)
-        x = x.reshape(x.shape[0], -1)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
+        return self.net(x)
 
 
 class AutoEncoder(nn.Module):

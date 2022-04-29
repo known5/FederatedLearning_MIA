@@ -1,9 +1,12 @@
 experiment_config:
   seed: 42
   device: "cpu"
-  is_multi_threaded: True
+  is_multi_threaded: False
   perform_attack: False
   evaluate_global_model: True
+  global_eval_interval: 1
+  training_test: True
+  local_test_interval: 1
 ---
 data_settings:
   data_path: "./data/"
@@ -12,21 +15,21 @@ data_settings:
   iid: False
 ---
 FL_settings:
-  number_of_clients: 10
-  training_rounds: 1
+  number_of_clients: 1
+  training_rounds: 10
 ---
 training_settings:
-  learning_rate: 0.01
+  learning_rate: 0.005
   momentum: 0.9
-  epochs: 1
-  batch_size: 32
+  epochs: 10
+  batch_size: 512
   loss_function: 'CrossEntropyLoss'
   optimizer: 'SGD'
 ---
 model_settings:
   name: "alexnet"
-  is_local_model: False
-  is_pre_trained: True
+  is_local_model: True
+  is_pre_trained: False
   weight_needs_init: False
   type_of_init: "temp"
   init_gain: 1.0
