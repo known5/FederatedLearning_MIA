@@ -1,15 +1,12 @@
+import datetime
+import logging
 import os
 import time
 import yaml
 import torch
-from torch import nn
-from torch.utils.data import DataLoader
-from torchvision import datasets, transforms
-from torchvision.transforms import ToTensor
+from torch.utils.tensorboard import SummaryWriter
 
 from src.server import CentralServer
-
-# export LD_PRELOAD=tcmalloc.so:$LD_PRELOAD
 
 if __name__ == '__main__':
     start_time = time.time()
@@ -23,7 +20,7 @@ if __name__ == '__main__':
     training_config = configs[3]["training_settings"]
     model_config = configs[4]["model_settings"]
     MIA_config = configs[5]["MIA_settings"]
-
+    log_config = configs[6]["LOG_settings"]
     # Setup device
     device = "cuda" if torch.cuda.is_available() and experiment_config['device'] == "cuda" else "cpu"
 

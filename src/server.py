@@ -57,6 +57,7 @@ class CentralServer(object):
     def start_up(self):
         """ Ja hier moet dus documentatie """
         torch.manual_seed(self.seed)
+        torch.cuda.manual_seed(self.seed)
 
         split_datasets, self.test_data = self.divide_datasets(self.dataset_name,
                                                               self.dataset_path,

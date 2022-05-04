@@ -47,19 +47,19 @@ class Client(object):
         self.training_dataloader = DataLoader(train_set,
                                               batch_size=self.batch_size,
                                               shuffle=True,
-                                              num_workers=0,
+                                              num_workers=1,
                                               pin_memory=False
                                               )
         self.testing_dataloader = DataLoader(self.data,
                                              batch_size=self.batch_size,
                                              shuffle=True,
-                                             num_workers=0,
+                                             num_workers=1,
                                              pin_memory=False
                                              )
 
-    def random_subset_of_training_data_for_attack(self, ratio):
-        pass
-        print("Not implemented yet")
+    # def random_subset_of_training_data_for_attack(self, ratio):
+    #     pass
+    #     print("Not implemented yet")
 
     def train(self):
         """ Ja hier moet dus documentatie """
@@ -81,8 +81,6 @@ class Client(object):
                 loss.backward()
                 optimizer.step()
 
-                if self.device == "cuda":
-                    torch.cuda.empty_cache()
         self.model.to("cpu")
 
     def test(self):
