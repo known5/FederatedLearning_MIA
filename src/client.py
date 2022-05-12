@@ -1,4 +1,5 @@
 import torch.utils
+import torch.optim as optimizers
 from torch.utils.data import DataLoader
 from src.utils import *
 
@@ -14,12 +15,15 @@ class Client(object):
         else:
             self.loss_function = nn.__dict__[self.loss_function]()
         self.number_of_epochs = training_param['epochs']
-        self.optimizer = training_param['optimizer']
-        if not hasattr(optimizers, self.optimizer):
-            error_message = f"...Optimizer \"{self.optimizer}\" is not supported or cannot be found in Torch Optimizers!"
-            raise AttributeError(error_message)
-        self.learning_rate = training_param['learning_rate']
+
         self.momentum = training_param['momentum']
+        self.optimizer = optimizers.__dict__[training_param['optimizer']](
+            params=self.model.parameters(),
+            lr=training_param['learning_rate'],
+            momentum=training_param['momentum'],
+            weight_decay=training_param['weight_decay']
+        )
+
         self.batch_size = training_param['batch_size']
         self.client_id = client_id
         self.device = device
@@ -47,40 +51,33 @@ class Client(object):
         self.training_dataloader = DataLoader(train_set,
                                               batch_size=self.batch_size,
                                               shuffle=True,
-                                              num_workers=1,
+                                              num_workers=2,
                                               pin_memory=False
                                               )
         self.testing_dataloader = DataLoader(self.data,
                                              batch_size=self.batch_size,
                                              shuffle=True,
-                                             num_workers=1,
+                                             num_workers=2,
                                              pin_memory=False
                                              )
 
-    # def random_subset_of_training_data_for_attack(self, ratio):
-    #     pass
-    #     print("Not implemented yet")
-
     def train(self):
         """ Ja hier moet dus documentatie """
-        self.__model.train()
-        self.__model.to(self.device)
+        self.model.train()
+        self.model.to(self.device)
 
-        optimizer = optimizers.__dict__[self.optimizer](self.model.parameters(),
-                                                        self.learning_rate,
-                                                        self.momentum)
-
-        for epoch in range(self.number_of_epochs):
+        for e in range(self.number_of_epochs):
             for data, labels in self.training_dataloader:
-                data, labels = data.to(self.device), labels.to(self.device)
-                # forward pass
-                optimizer.zero_grad(set_to_none=True)
+                data, labels = data.float().to(self.device), labels.long().to(self.device)
+
+                self.optimizer.zero_grad()
                 outputs = self.model(data)
                 loss = self.loss_function(outputs, labels)
-                # backward pass
-                loss.backward()
-                optimizer.step()
 
+                loss.backward()
+                self.optimizer.step()
+
+                if self.device == "cuda": torch.cuda.empty_cache()
         self.model.to("cpu")
 
     def test(self):

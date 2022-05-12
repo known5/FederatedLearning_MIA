@@ -1,41 +1,33 @@
 experiment_config:
   seed: 42
   device: "cpu"
-  is_multi_threaded: False
-  perform_attack: False
-  evaluate_global_model: True
-  global_eval_interval: 1
-  training_test: True
-  local_test_interval: 1
+  local_eval: 0
+  global_eval: 0
+  passive_attack: 1
 ---
 data_settings:
   data_path: "./data/"
   dataset_name: "CIFAR100"
-  split_ratio: 0.8
+  local_split_ratio: 0.8
   iid: False
 ---
-FL_settings:
+training_settings:
   number_of_clients: 1
   training_rounds: 1
----
-training_settings:
-  learning_rate: 0.005
+  learning_rate: 0.01
   momentum: 0.9
+  weight_decay: 0.00005
   epochs: 1
-  batch_size: 512
+  batch_size: 32
   loss_function: 'CrossEntropyLoss'
   optimizer: 'SGD'
 ---
 model_settings:
   name: "alexnet"
   is_local_model: True
-  is_pre_trained: False
-  weight_needs_init: False
+  weight_init: False
   type_of_init: "temp"
   init_gain: 1.0
----
-MIA_settings:
-  attacker_present: False
 ---
 LOG_settings:
   log_path: "./log/"

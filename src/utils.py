@@ -1,9 +1,12 @@
+import time
+
+import torch
 import torchvision
 import torchvision.models as models
 import torchvision.transforms as transforms
-import torch.optim as optimizers
 import torch.nn as nn
 import src.models as ms
+from torchsummary import summary
 
 
 def init_weights_normal(layer):
@@ -13,17 +16,23 @@ def init_weights_normal(layer):
             nn.init.zeros_(layer.bias)
 
 
-def load_model(model_name, is_local_model, is_pretrained):
+def get_duration(start_time):
+    hours, rem = divmod(time.time() - start_time, 3600)
+    minutes, seconds = divmod(rem, 60)
+    return "{:0>2}:{:0>2}:{:05.2f}".format(int(hours), int(minutes), seconds)
+
+
+def load_model(model_name, is_local_model):
     """ Ja hier moet dus documentatie """
-    model = None
     if is_local_model:
         model = ms.TestNet()
+        summary(model, (3, 32, 32))
     else:
         if not hasattr(models, model_name):
             error_message = f"...model \"{model_name}\" is not supported or cannot be found in TorchVision models!"
             raise AttributeError(error_message)
         else:
-            model = models.__dict__[model_name](is_pretrained)
+            model = models.__dict__[model_name]
     return model
 
 

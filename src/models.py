@@ -40,11 +40,8 @@ class TestNet(nn.Module):
         super(TestNet, self).__init__()
         self.net = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(input_size, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, 256),
-            nn.ReLU(),
-            nn.Linear(256, output_classes)
+            nn.Linear(input_size, output_classes),
+            nn.ReLU()
         )
 
     def forward(self, x):
@@ -67,8 +64,8 @@ class AlexNet(nn.Module):
             nn.Conv2d(384, 256, kernel_size=3, stride=1, padding=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2),
+            nn.ReLU(inplace=True)
+            # nn.MaxPool2d(kernel_size=3, stride=2),
         )
         self.classifier = nn.Sequential(
             nn.Dropout(),
@@ -81,9 +78,50 @@ class AlexNet(nn.Module):
         )
 
     def forward(self, x):
+        x = torch.unsqueeze(x, dim=2)
         x = self.features(x)
         x = torch.flatten(x, 1)
         x = self.classifier(x)
+        return x
+
+
+class AttackModel(nn.Module):
+    """ Ja hier moet dus documentatie """
+
+    def __int__(self, target_model):
+        super().__init__()
+        self.encoder_inputs = []
+
+        # create component if last layer is to be exploited
+        if self.exploit_last_layer:
+            self.layer_component = FcnComponent(target_model.output, 100)
+            self.encoder_inputs.append(self.layer_component.output)
+
+            # create component if OHE label is to be exploited
+        if self.exploit_label:
+            self.label_component = FcnComponent(target_model.output)
+            self.encoder_inputs.append(self.label_component.output)
+
+            # create component if loss value is to be exploited
+        if self.exploit_loss:
+            self.loss_component = FcnComponent(1, 100)
+            self.encoder_inputs.append(self.loss_component.output)
+
+            # creates CNN/FCN component for gradient values of layers of gradients to exploit
+        if self.exploit_gradient:
+            self.gradient_component = CnnForFcnGradComponent(target_model[11].weight.grad)
+            self.encoder_inputs.append(self.gradient_component.output)
+
+        self.encoder = AutoEncoder(self.encoder_inputs)
+
+    def forward(self, x1, x2, x3, x4):
+        x1 = self.layer_component(x1)
+        x2 = self.label_component(x2)
+        x3 = self.loss_component(x3)
+        x4 = self.gradient_component(x4)
+
+        x = torch.cat((x1, x2, x3, x4), dim=1)
+        self.classifier(x)
         return x
 
 
@@ -93,6 +131,8 @@ class AutoEncoder(nn.Module):
     def __init__(self, encoder_input):
         """ Ja hier moet dus documentatie """
         super(AutoEncoder, self).__init__()
+        self.input = encoder_input
+        self.output = 1
         self.encoder = nn.Sequential(
             nn.Linear(encoder_input, 256),
             nn.ReLU(),
@@ -114,6 +154,8 @@ class FcnComponent(nn.Module):
     def __init__(self, input_size, layer_size=128):
         """ Ja hier moet dus documentatie """
         super(FcnComponent, self).__init__()
+        self.input = input_size
+        self.output = 64
         self.fcn = nn.Sequential(
             nn.Linear(input_size, layer_size),
             nn.ReLU(),
@@ -133,6 +175,8 @@ class CnnForFcnGradComponent(nn.Module):
         """ Ja hier moet dus documentatie """
         super(CnnForFcnGradComponent, self).__init__()
         dim = int(input_size[1])
+        self.input = 0
+        self.output = 256
 
         self.cnn = nn.Sequential(
             nn.Dropout(0.2),
@@ -149,7 +193,7 @@ class CnnForFcnGradComponent(nn.Module):
             nn.Dropout(0.2),
             nn.Linear(512, 512),
             nn.ReLU(),
-            nn.Linear(512, 256),
+            nn.Linear(512, self.output),
             nn.ReLU()
         )
         self.cnn.apply(init_weights_normal)
@@ -167,6 +211,9 @@ class CnnForCnnLayerOutputsComponent(nn.Module):
 
         dim2 = int(input_size[1])
         dim4 = int(input_size[3])
+
+        self.input = dim4
+        self.output = 64
 
         self.cnn = nn.Sequential(
             nn.Conv2d(in_channels=dim2,
