@@ -4,9 +4,11 @@ import os
 import time
 import yaml
 import torch
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
 
 from src.server import CentralServer
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
 
 if __name__ == '__main__':
     start_time = time.time()
@@ -22,8 +24,8 @@ if __name__ == '__main__':
     MIA_config = configs[5]["MIA_settings"]
     log_config = configs[6]["LOG_settings"]
     # Setup device
-    device = "cuda" if torch.cuda.is_available() and experiment_config['device'] == "cuda" else "cpu"
-
+    device = "cuda:0" if torch.cuda.is_available() and experiment_config['device'] == "cuda" else "cpu"
+    print('Device is: ' + device)
     # Setup Main Server with given parameters
     main_server = CentralServer(experiment_config,
                                 data_config,

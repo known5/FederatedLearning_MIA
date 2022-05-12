@@ -4,6 +4,7 @@ import torch
 from torch.utils.data import DataLoader
 from multiprocessing import pool, cpu_count
 from collections import OrderedDict
+import random
 
 from src.client import Client
 from src.attacker import Attacker
@@ -66,7 +67,8 @@ class CentralServer(object):
         self.dataloader = DataLoader(self.test_data,
                                      batch_size=self.batch_size,
                                      shuffle=False,
-                                     pin_memory=False
+                                     num_workers=2,
+                                     pin_memory=True
                                      )
 
         self.model = load_model(self.model_param['name'],
@@ -124,15 +126,10 @@ class CentralServer(object):
     def aggregate_model(self):
         """ Ja hier moet dus documentatie """
         # print("Aggregating models....")
-        averaged_weights = OrderedDict()
-        for i, client_id in enumerate(range(self.number_of_clients)):
-            local_weights = self.clients[client_id].model.state_dict()
-            for layer_id in self.model.state_dict().keys():
-                if i == 0:
-                    averaged_weights[layer_id] = local_weights[layer_id] * (1 / len(self.clients))
-                else:
-                    averaged_weights[layer_id] += local_weights[layer_id] * (1 / len(self.clients))
-        self.model.load_state_dict(averaged_weights)
+        averaged_dict = self.model.state_dict()
+        for layer in averaged_dict.keys():
+            averaged_dict[layer] = torch.stack([self.clients[i].model.state_dict()[layer].float() for i in range(len(self.clients))], 0).mean(0)
+        self.model.load_state_dict(averaged_dict)
 
     def do_training(self, round):
         """ Ja hier moet dus documentatie """
@@ -145,14 +142,18 @@ class CentralServer(object):
                 workers.map(self.test_clients, self.clients)
 
         elif not self.is_mul:
+
             for client in self.clients:
                 client.train()
+
+        if self.always_train_test:
+
+            for client in self.clients:
                 client.test()
 
-        if self.always_train_test or round % self.local_interval == 0:
             print(f"[Round: {str(round).zfill(4)}] Evaluate LOCAL model's performance...!")
             for client in self.clients:
-                print(f"\n\t[Client {str(client.client_id)}] ...finished evaluation!\
+                print(f"\t[Client {str(client.client_id)}] ...finished evaluation!\
                        \n\t=> Local Loss: {client.local_results.get('loss')[0]:.4f}\
                        \n\t=> Local Accuracy: {100. * client.local_results.get('accuracy')[0]:.2f}%")
 
@@ -170,7 +171,7 @@ class CentralServer(object):
 
                 predicted = outputs.argmax(dim=1, keepdim=True)
                 correct += predicted.eq(labels.view_as(predicted)).sum().item()
-        self.model.to("cpu")
+        # self.model.to("cpu")
 
         return test_loss / len(self.dataloader), correct / len(self.test_data)
 
@@ -189,21 +190,21 @@ class CentralServer(object):
             print("\t[Server]: ... aggregate model!]")
             self.aggregate_model()
             # If checked, perform global model evaluation every round.
-            if evaluate_global_model or index % self.global_interval == 0:
-                round_loss, round_accuracy = self.test_global_model()
+        if self.always_evaluate_global_model:
+            round_loss, round_accuracy = self.test_global_model()
 
-                self.results['loss'].append(round_loss)
-                self.results['accuracy'].append(round_accuracy)
+            self.results['loss'].append(round_loss)
+            self.results['accuracy'].append(round_accuracy)
 
-                print(f"[Round: {str(index).zfill(4)}] Evaluate global model's performance...!\
-                    \n\t[Server] ...finished evaluation!\
-                    \n\t=> Loss: {round_loss:.4f}\
-                    \n\t=> Accuracy: {100. * round_accuracy:.2f}%")
-            # If checked, perform MIA during each round.
-            if perform_attack:
-                pass
+            print(f"[Round: {str(index).zfill(4)}] Evaluate global model's performance...!\
+                \n\t[Server] ...finished evaluation!\
+                \n\t=> Loss: {round_loss:.4f}\
+                \n\t=> Accuracy: {100. * round_accuracy:.2f}%")
+        # If checked, perform MIA during each round.
+        if perform_attack:
+            pass
 
-            hours, rem = divmod(time.time() - round_time, 3600)
-            minutes, seconds = divmod(rem, 60)
-            end_time = "{:0>2}:{:0>2}:{:05.2f}".format(int(hours), int(minutes), seconds)
-            print(f"[Round {str(index).zfill(4)} End] ... Round time: {str(end_time)} s/it")
+        hours, rem = divmod(time.time() - round_time, 3600)
+        minutes, seconds = divmod(rem, 60)
+        end_time = "{:0>2}:{:0>2}:{:05.2f}".format(int(hours), int(minutes), seconds)
+        print(f"[Round {str(index).zfill(4)} End] ... Round time: {str(end_time)} s/it")

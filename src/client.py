@@ -1,3 +1,5 @@
+import time
+
 import torch.utils
 from torch.utils.data import DataLoader
 from src.utils import *
@@ -47,14 +49,14 @@ class Client(object):
         self.training_dataloader = DataLoader(train_set,
                                               batch_size=self.batch_size,
                                               shuffle=True,
-                                              num_workers=1,
-                                              pin_memory=False
+                                              num_workers=2,
+                                              pin_memory=True
                                               )
         self.testing_dataloader = DataLoader(self.data,
                                              batch_size=self.batch_size,
-                                             shuffle=True,
-                                             num_workers=1,
-                                             pin_memory=False
+                                             shuffle=False,
+                                             num_workers=2,
+                                             pin_memory=True
                                              )
 
     # def random_subset_of_training_data_for_attack(self, ratio):
@@ -63,43 +65,44 @@ class Client(object):
 
     def train(self):
         """ Ja hier moet dus documentatie """
-        self.__model.train()
-        self.__model.to(self.device)
+        self.model.train()
+        self.model.to(self.device)
 
         optimizer = optimizers.__dict__[self.optimizer](self.model.parameters(),
                                                         self.learning_rate,
                                                         self.momentum)
-
+        start_time = time.time()
         for epoch in range(self.number_of_epochs):
+            losses = 0
             for data, labels in self.training_dataloader:
-                data, labels = data.to(self.device), labels.to(self.device)
+                data, labels = data.float().to(self.device), labels.long().to(self.device)
                 # forward pass
-                optimizer.zero_grad(set_to_none=True)
+                optimizer.zero_grad()
                 outputs = self.model(data)
                 loss = self.loss_function(outputs, labels)
+                losses += loss
                 # backward pass
                 loss.backward()
                 optimizer.step()
-
-        self.model.to("cpu")
+            print("Loss is: " + str(losses / len(self.training_dataloader)))
+        # self.model.to("cpu")
+        end_time = time.time() - start_time
+        print(end_time)
 
     def test(self):
-        self.__model.eval()
-        self.__model.to(self.device)
+        self.model.eval()
+        self.model.to(self.device)
 
         test_loss, correct = 0, 0
         with torch.no_grad():
-            for data, labels in self.testing_dataloader:
-                data, labels = data.float().to(self.device), labels.long().to(self.device)
+            for data, labels in self.training_dataloader:
+                data, labels = data.to(self.device), labels.to(self.device)
                 outputs = self.model(data)
                 test_loss += self.loss_function(outputs, labels)
 
                 predicted = outputs.argmax(dim=1, keepdim=True)
                 correct += predicted.eq(labels.view_as(predicted)).sum().item()
-                if self.device == "cuda":
-                    torch.cuda.empty_cache()
-        self.model.to("cpu")
 
         self.local_results = {"loss": [], "accuracy": []}
-        self.local_results['loss'].append(test_loss / len(self.testing_dataloader))
-        self.local_results['accuracy'].append(correct / len(self.testing_dataloader.dataset.indices))
+        self.local_results['loss'].append(test_loss / len(self.training_dataloader))
+        self.local_results['accuracy'].append(correct / len(self.training_dataloader.dataset))

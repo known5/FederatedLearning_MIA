@@ -17,7 +17,7 @@ def load_model(model_name, is_local_model, is_pretrained):
     """ Ja hier moet dus documentatie """
     model = None
     if is_local_model:
-        model = ms.TestNet()
+        model = ms.AlexNet()
     else:
         if not hasattr(models, model_name):
             error_message = f"...model \"{model_name}\" is not supported or cannot be found in TorchVision models!"
