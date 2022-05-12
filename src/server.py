@@ -57,7 +57,8 @@ class CentralServer(object):
         self.dataloader = DataLoader(self.test_data,
                                      batch_size=self.batch_size,
                                      shuffle=False,
-                                     pin_memory=False
+                                     num_workers=2,
+                                     pin_memory=True
                                      )
 
         self.clients = self.generate_clients(self.training_param)
@@ -101,15 +102,10 @@ class CentralServer(object):
     def aggregate_model(self):
         """ Ja hier moet dus documentatie """
         # print("Aggregating models....")
-        averaged_weights = OrderedDict()
-        for i, client_id in enumerate(range(self.number_of_clients)):
-            local_weights = self.clients[client_id].model.state_dict()
-            for layer_id in self.model.state_dict().keys():
-                if i == 0:
-                    averaged_weights[layer_id] = local_weights[layer_id] * (1 / len(self.clients))
-                else:
-                    averaged_weights[layer_id] += local_weights[layer_id] * (1 / len(self.clients))
-        self.model.load_state_dict(averaged_weights)
+        averaged_dict = self.model.state_dict()
+        for layer in averaged_dict.keys():
+            averaged_dict[layer] = torch.stack([self.clients[i].model.state_dict()[layer].float() for i in range(len(self.clients))], 0).mean(0)
+        self.model.load_state_dict(averaged_dict)
 
     def do_training(self, round_number):
         """ Ja hier moet dus documentatie """
@@ -158,20 +154,19 @@ class CentralServer(object):
             print("\t[Server]: ... aggregate model!]")
             self.aggregate_model()
             # If checked, perform global model evaluation every round.
-            if self.do_global_eval > 0:
-                round_loss, round_accuracy = self.test_global_model()
+        if self.do_global_eval > 0:
+            round_loss, round_accuracy = self.test_global_model()
 
-                self.results['loss'].append(round_loss)
-                self.results['accuracy'].append(round_accuracy)
+            self.results['loss'].append(round_loss)
+            self.results['accuracy'].append(round_accuracy)
 
-                print(f"[Round: {str(index).zfill(4)}] Evaluate global model's performance...!\
-                    \n\t[Server] ...finished evaluation!\
-                    \n\t=> Loss: {round_loss:.4f}\
-                    \n\t=> Accuracy: {100. * round_accuracy:.2f}%")
+            print(f"[Round: {str(index).zfill(4)}] Evaluate global model's performance...!\
+                \n\t[Server] ...finished evaluation!\
+                \n\t=> Loss: {round_loss:.4f}\
+                \n\t=> Accuracy: {100. * round_accuracy:.2f}%")
 
             # If checked, perform MIA during each round.
-            if self.do_passive_attack():
-                attacker = self.clients[0]
+        if self.do_passive_attack():
+            attacker = self.clients[0]
 
-
-            print(f"[Round {str(index).zfill(4)} End] ... Round time: {str(get_duration(start_time))} s/it")
+        print(f"[Round {str(index).zfill(4)} End] ... Round time: {str(get_duration(start_time))} s/it")

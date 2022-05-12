@@ -1,3 +1,5 @@
+import time
+
 import torch.utils
 import torch.optim as optimizers
 from torch.utils.data import DataLoader
@@ -67,6 +69,7 @@ class Client(object):
         self.model.to(self.device)
 
         for e in range(self.number_of_epochs):
+            losses = 0
             for data, labels in self.training_dataloader:
                 data, labels = data.float().to(self.device), labels.long().to(self.device)
 
@@ -74,29 +77,29 @@ class Client(object):
                 outputs = self.model(data)
                 loss = self.loss_function(outputs, labels)
 
+                losses += loss
+                # backward pass
                 loss.backward()
                 self.optimizer.step()
-
-                if self.device == "cuda": torch.cuda.empty_cache()
-        self.model.to("cpu")
+            print("Loss is: " + str(losses / len(self.training_dataloader)))
+        # self.model.to("cpu")
+        end_time = time.time() - start_time
+        print(end_time)
 
     def test(self):
-        self.__model.eval()
-        self.__model.to(self.device)
+        self.model.eval()
+        self.model.to(self.device)
 
         test_loss, correct = 0, 0
         with torch.no_grad():
-            for data, labels in self.testing_dataloader:
-                data, labels = data.float().to(self.device), labels.long().to(self.device)
+            for data, labels in self.training_dataloader:
+                data, labels = data.to(self.device), labels.to(self.device)
                 outputs = self.model(data)
                 test_loss += self.loss_function(outputs, labels)
 
                 predicted = outputs.argmax(dim=1, keepdim=True)
                 correct += predicted.eq(labels.view_as(predicted)).sum().item()
-                if self.device == "cuda":
-                    torch.cuda.empty_cache()
-        self.model.to("cpu")
 
         self.local_results = {"loss": [], "accuracy": []}
-        self.local_results['loss'].append(test_loss / len(self.testing_dataloader))
-        self.local_results['accuracy'].append(correct / len(self.testing_dataloader.dataset.indices))
+        self.local_results['loss'].append(test_loss / len(self.training_dataloader))
+        self.local_results['accuracy'].append(correct / len(self.training_dataloader.dataset))
