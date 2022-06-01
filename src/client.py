@@ -104,7 +104,7 @@ class Client(object):
                 correct = predicted.eq(labels.view_as(predicted)).sum().item()
 
                 # Update loss, accuracy and run_time metrics
-                losses.update(loss.item(), self.batch_size)
+                losses.update(loss.item())
                 accuracy.update(correct, self.batch_size)
                 batch_time.update(time.time() - start_time)
 
@@ -113,8 +113,8 @@ class Client(object):
                       f'| Client: {self.client_id} ' \
                       f'| Epoch: {e + 1} ' \
                       f'| Time: {batch_time.avg:.2f}s ' \
-                      f'| Loss: {losses.avg:.5f} ' \
-                      f'| Train Accuracy {accuracy.avg:.2f}% ]'
+                      f'| Loss: {losses.sum:.5f} ' \
+                      f'| Train Accuracy {accuracy.avg * 100:.2f}% ]'
             logging.info(message)
         self.model.to("cpu")
 
@@ -149,8 +149,8 @@ class Client(object):
                       f'| Local Eval ' \
                       f'| Time: {batch_time.avg:.2f}s ' \
                       f'| Client: {self.client_id} ' \
-                      f'| Loss: {losses.avg:.5f} ' \
-                      f'| Train Accuracy {accuracy.avg:.2f}% ]'
+                      f'| Loss: {losses.sum:.5f} ' \
+                      f'| Train Accuracy {accuracy.avg * 100:.2f}% ]'
             logging.info(message)
 
         self.local_results = {"loss": [], "accuracy": []}
