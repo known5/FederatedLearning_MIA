@@ -1,38 +1,39 @@
-import time
+import logging
 
 import torch.utils
 import torch.optim as optimizers
+import torch.nn as nn
 from torch.utils.data import DataLoader
 from src.utils import *
 
 
 class Client(object):
 
-    def __init__(self, client_id, training_param, device):
+    def __init__(self, client_id, training_param, device, model):
         """ Ja hier moet dus documentatie """
+        self.__model = None
         self.loss_function = training_param['loss_function']
         if not hasattr(nn, self.loss_function):
-            error_message = f"...Loss Function: \"{self.loss_function}\" is not supported or cannot be found in Torch Optimizers!"
+            error_message = f"...Loss Function: \"{self.loss_function}\" is not supported or cannot be found in " \
+                            f"Torch Optimizers! "
+            logging.error(error_message)
             raise AttributeError(error_message)
         else:
             self.loss_function = nn.__dict__[self.loss_function]()
         self.number_of_epochs = training_param['epochs']
-
+        self.model = model
+        self.optimizer_name = training_param['optimizer']
+        self.learning_rate = training_param['learning_rate']
         self.momentum = training_param['momentum']
-        self.optimizer = optimizers.__dict__[training_param['optimizer']](
-            params=self.model.parameters(),
-            lr=training_param['learning_rate'],
-            momentum=training_param['momentum'],
-            weight_decay=training_param['weight_decay']
-        )
 
         self.batch_size = training_param['batch_size']
         self.client_id = client_id
         self.device = device
         self.data = None
-        self.__model = None
+
         self.training_dataloader = None
         self.testing_dataloader = None
+        self.optimizer = None
         self.local_results = {"loss": [], "accuracy": []}
 
     @property
@@ -62,44 +63,98 @@ class Client(object):
                                              num_workers=2,
                                              pin_memory=False
                                              )
+        message = f'Client {self.client_id} loaded datasets successfully'
+        logging.debug(message)
 
-    def train(self):
+    def train(self, round_number):
         """ Ja hier moet dus documentatie """
         self.model.train()
         self.model.to(self.device)
 
-        for e in range(self.number_of_epochs):
-            losses = 0
-            for data, labels in self.training_dataloader:
-                data, labels = data.float().to(self.device), labels.long().to(self.device)
+        dataset_size = len(self.training_dataloader.dataset)
 
+        self.optimizer = optimizers.__dict__[self.optimizer_name](
+            params=self.model.parameters(),
+            lr=self.learning_rate,
+            momentum=self.momentum
+        )
+
+        for e in range(self.number_of_epochs):
+            batch_time = AverageMeter()
+            losses = AverageMeter()
+            accuracy = AverageMeter()
+            start_time = time.time()
+            correct = 0
+            for data, labels in self.training_dataloader:
+                # Transfer data to CPU or GPU and set gradients to zero for performance.
+                data, labels = data.float().to(self.device), labels.long().to(self.device)
                 self.optimizer.zero_grad()
+
+                # Do a forward pass through the network to get prediction values and update loss metric.
                 outputs = self.model(data)
                 loss = self.loss_function(outputs, labels)
 
-                losses += loss
-                # backward pass
+                # Do a backward pass through the network to get the gradients
+                # and then use the optimizer to update the weights.
                 loss.backward()
                 self.optimizer.step()
-            print("Loss is: " + str(losses / len(self.training_dataloader)))
-        # self.model.to("cpu")
-        end_time = time.time() - start_time
-        print(end_time)
 
-    def test(self):
-        self.model.eval()
-        self.model.to(self.device)
-
-        test_loss, correct = 0, 0
-        with torch.no_grad():
-            for data, labels in self.training_dataloader:
-                data, labels = data.to(self.device), labels.to(self.device)
-                outputs = self.model(data)
-                test_loss += self.loss_function(outputs, labels)
-
+                # Compare predictions to labels and get accuracy score.
                 predicted = outputs.argmax(dim=1, keepdim=True)
                 correct += predicted.eq(labels.view_as(predicted)).sum().item()
 
+                # Update loss, accuracy and run_time metrics
+                losses.update(loss.item())
+                accuracy.update((correct / dataset_size) * 100)
+                batch_time.update(time.time() - start_time)
+
+            message = f'[ Round: {round_number} ' \
+                      f'| Local Train ' \
+                      f'| Client: {self.client_id} ' \
+                      f'| Epoch: {e + 1} ' \
+                      f'| Time: {batch_time.avg:.2f}s ' \
+                      f'| Loss: {losses.avg:.5f} ' \
+                      f'| Train Accuracy {accuracy.avg:.2f}% ]'
+            logging.info(message)
+        self.model.to("cpu")
+
+    def test(self, round_number):
+        """ Ja hier moet dus documentatie """
+        self.model.eval()
+        self.model.to(self.device)
+
+        dataset_size = len(self.training_dataloader.dataset)
+
+        losses = AverageMeter()
+        accuracy = AverageMeter()
+        batch_time = AverageMeter()
+        correct = 0
+        with torch.no_grad():
+            start_time = time.time()
+            for data, labels in self.training_dataloader:
+                # Transfer data to CPU or GPU.
+                data, labels = data.float().to(self.device), labels.long().to(self.device)
+
+                # Do a forward pass through the network to get prediction values and update loss metric.
+                outputs = self.model(data)
+                losses.update(self.loss_function(outputs, labels))
+
+                # Compare predictions to labels and get accuracy score.
+                predicted = outputs.argmax(dim=1, keepdim=True)
+                correct += predicted.eq(labels.view_as(predicted)).sum().item()
+
+                # Update time and accuracy metric.
+                accuracy.update((correct / dataset_size) * 100)
+                batch_time.update(time.time() - start_time)
+
+            message = f'[ Round: {round_number} ' \
+                      f'| Local Eval ' \
+                      f'| Time: {batch_time.avg:.2f}s ' \
+                      f'| Client: {self.client_id} ' \
+                      f'| Loss: {losses.avg:.5f} ' \
+                      f'| Train Accuracy {accuracy.avg:.2f}% ]'
+            logging.info(message)
+
         self.local_results = {"loss": [], "accuracy": []}
-        self.local_results['loss'].append(test_loss / len(self.training_dataloader))
-        self.local_results['accuracy'].append(correct / len(self.training_dataloader.dataset))
+        self.local_results['loss'].append(losses.avg)
+        self.local_results['accuracy'].append(accuracy.avg)

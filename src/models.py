@@ -1,39 +1,61 @@
 import torch.nn as nn
-import torch.nn.functional as F
 import torch
 
-from src.utils import *
+""" Ja hier moet dus documentatie """
 
 
-class TestNetCNN(nn.Module):
+########################################################################################################################
+# Model Class Helpers
+########################################################################################################################
 
-    def __init__(self):
-        super().__init__()
-        self.conv1 = nn.Conv2d(3, 6, 5)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(6, 16, 5)
-        self.fc1 = nn.Linear(16 * 5 * 5, 256)
-        self.fc2 = nn.Linear(256, 128)
-        self.fc3 = nn.Linear(128, 100)
 
-    def forward(self, x):
-        x = self.pool(F.relu(self.conv1(x)))
-        x = self.pool(F.relu(self.conv2(x)))
-        x = torch.flatten(x, 1) # flatten all dimensions except batch
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
+def init_weights_normal(layer):
+    """
+     Applies L2 regularization to a given model layer
+        Set to use normal distribution
+     """
+    if isinstance(layer, nn.Linear):
+        nn.init.normal_(layer.weight, 0.0, 0.01)
+        if layer.bias is not None:
+            nn.init.zeros_(layer.bias)
+
+
+def get_output_shape_of_last_layer(target_model):
+    """
+        Gets the output shape of the last layer of a given model
+    """
+    output_shape = None
+    for name, param in target_model.named_parameters():
+        if 'weight' in name:
+            output_shape = param.size()[1]
+    return output_shape
+
+
+def get_last_layer_name(target_model):
+    """
+         Gets the output shape of the last layer of a given model
+    """
+    layer_name = None
+    for name, param in target_model.named_parameters():
+        if 'weight' in name:
+            layer_name = name
+    return layer_name
+
+
+########################################################################################################################
+# Models
+########################################################################################################################
 
 
 class TestNet(nn.Module):
 
     def __init__(self, input_size=3 * 32 * 32, output_classes=100):
         super(TestNet, self).__init__()
+
         self.net = nn.Sequential(
             nn.Flatten(),
             nn.Linear(input_size, 512),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.Linear(512, output_classes)
         )
 
@@ -42,36 +64,29 @@ class TestNet(nn.Module):
 
 
 class AlexNet(nn.Module):
-    def __init__(self, num_classes: int = 100, dropout: float = 0.3) -> None:
-        super().__init__()
-        # _log_api_usage_once(self)
+
+    def __init__(self, num_classes=10):
+        super(AlexNet, self).__init__()
         self.features = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=11, stride=4, padding=2),
+            nn.Conv2d(3, 64, kernel_size=11, stride=4, padding=5),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2),
+            nn.MaxPool2d(kernel_size=2, stride=2),
             nn.Conv2d(64, 192, kernel_size=5, padding=2),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2),
+            nn.MaxPool2d(kernel_size=2, stride=2),
             nn.Conv2d(192, 384, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(384, 256, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(256, 256, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True)
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
         )
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2)
-        self.avgpool = nn.AdaptiveAvgPool2d((6, 6))
-        self.classifier = nn.Sequential(
-            nn.Dropout(p=dropout),
-            nn.Linear(256 * 6 * 6, num_classes)
-        )
+        self.classifier = nn.Linear(256, num_classes)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x):
         x = self.features(x)
-        x = x.expand(-1, 256, 3, 3)
-        x = self.maxpool(x)
-        x = self.avgpool(x)
-        x = torch.flatten(x, 1)
+        x = x.view(x.size(0), -1)
         x = self.classifier(x)
         return x
 
@@ -79,39 +94,71 @@ class AlexNet(nn.Module):
 class AttackModel(nn.Module):
     """ Ja hier moet dus documentatie """
 
-    def __int__(self, target_model):
-        super().__init__()
+    def __init__(self, target_model,
+                 exploit_last_layer=True,
+                 exploit_label=True,
+                 exploit_loss=True,
+                 exploit_gradient=True
+                 ):
+        super(AttackModel, self).__init__()
+        self.target_output = get_output_shape_of_last_layer(target_model)
+        self.last_layer_name = get_last_layer_name(target_model)
+
         self.encoder_inputs = []
+        self.model = target_model
+
+        self.exploit_last_layer = exploit_last_layer
+        self.exploit_label = exploit_label
+        self.exploit_loss = exploit_loss
+        self.exploit_gradient = exploit_gradient
+
+        self.layer_component = None
+        self.label_component = None
+        self.loss_component = None
+        self.gradient_component = None
 
         # create component if last layer is to be exploited
-        if self.exploit_last_layer:
-            self.layer_component = FcnComponent(target_model.output, 100)
-            self.encoder_inputs.append(self.layer_component.output)
+        if exploit_last_layer:
+            self.layer_component = FcnComponent(self.target_output, 100)
+            module_output = get_output_shape_of_last_layer(self.layer_component)
+            self.encoder_inputs.append(module_output)
 
             # create component if OHE label is to be exploited
-        if self.exploit_label:
-            self.label_component = FcnComponent(target_model.output)
-            self.encoder_inputs.append(self.label_component.output)
+        if exploit_label:
+            self.label_component = FcnComponent(self.target_output)
+            module_output = get_output_shape_of_last_layer(self.label_component)
+            self.encoder_inputs.append(module_output)
 
             # create component if loss value is to be exploited
-        if self.exploit_loss:
+        if exploit_loss:
             self.loss_component = FcnComponent(1, 100)
-            self.encoder_inputs.append(self.loss_component.output)
+            module_output = get_output_shape_of_last_layer(self.loss_component)
+            self.encoder_inputs.append(module_output)
 
             # creates CNN/FCN component for gradient values of layers of gradients to exploit
-        if self.exploit_gradient:
-            self.gradient_component = CnnForFcnGradComponent(target_model[11].weight.grad)
-            self.encoder_inputs.append(self.gradient_component.output)
+        if exploit_gradient:
+            self.gradient_component = CnnForFcnGradComponent(self.target_output)
+            module_output = get_output_shape_of_last_layer(self.gradient_component)
+            self.encoder_inputs.append(module_output)
 
         self.encoder = AutoEncoder(self.encoder_inputs)
 
-    def forward(self, x1, x2, x3, x4):
-        x1 = self.layer_component(x1)
-        x2 = self.label_component(x2)
-        x3 = self.loss_component(x3)
-        x4 = self.gradient_component(x4)
+    def forward(self, layer=torch.Tensor, labels=torch.Tensor, loss=torch.Tensor,
+                gradient=torch.Tensor) -> torch.Tensor:
+        inputs = []
+        if self.exploit_last_layer:
+            inputs.append(self.layer_component(layer))
 
-        x = torch.cat((x1, x2, x3, x4), dim=1)
+        if self.exploit_label:
+            inputs.append(self.label_component(labels))
+
+        if self.exploit_loss:
+            inputs.append(self.loss_component(loss))
+
+        if self.exploit_gradient:
+            inputs.append(self.gradient_component(gradient))
+
+        x = torch.cat(inputs, dim=1)
         self.classifier(x)
         return x
 
@@ -122,10 +169,10 @@ class AutoEncoder(nn.Module):
     def __init__(self, encoder_input):
         """ Ja hier moet dus documentatie """
         super(AutoEncoder, self).__init__()
-        self.input = encoder_input
-        self.output = 1
+        input_concat = sum(encoder_input)
+
         self.encoder = nn.Sequential(
-            nn.Linear(encoder_input, 256),
+            nn.Linear(input_concat, 256),
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU(),
@@ -145,8 +192,7 @@ class FcnComponent(nn.Module):
     def __init__(self, input_size, layer_size=128):
         """ Ja hier moet dus documentatie """
         super(FcnComponent, self).__init__()
-        self.input = input_size
-        self.output = 64
+
         self.fcn = nn.Sequential(
             nn.Linear(input_size, layer_size),
             nn.ReLU(),
@@ -165,9 +211,7 @@ class CnnForFcnGradComponent(nn.Module):
     def __init__(self, input_size):
         """ Ja hier moet dus documentatie """
         super(CnnForFcnGradComponent, self).__init__()
-        dim = int(input_size[1])
-        self.input = 0
-        self.output = 256
+        dim = input_size
 
         self.cnn = nn.Sequential(
             nn.Dropout(0.2),
@@ -184,7 +228,7 @@ class CnnForFcnGradComponent(nn.Module):
             nn.Dropout(0.2),
             nn.Linear(512, 512),
             nn.ReLU(),
-            nn.Linear(512, self.output),
+            nn.Linear(512, 256),
             nn.ReLU()
         )
         self.cnn.apply(init_weights_normal)
@@ -202,9 +246,6 @@ class CnnForCnnLayerOutputsComponent(nn.Module):
 
         dim2 = int(input_size[1])
         dim4 = int(input_size[3])
-
-        self.input = dim4
-        self.output = 64
 
         self.cnn = nn.Sequential(
             nn.Conv2d(in_channels=dim2,

@@ -1,19 +1,12 @@
+import logging
 import time
-
-import torch
 import torchvision
 import torchvision.models as models
 import torchvision.transforms as transforms
-import torch.nn as nn
-import src.models as ms
-from torchsummary import summary
+import torchvision.datasets as datasets
+import torch.utils.data as data
 
-
-def init_weights_normal(layer):
-    if isinstance(layer, nn.Linear):
-        nn.init.normal(layer.weight, 0.0, 0.01)
-        if layer.bias is not None:
-            nn.init.zeros_(layer.bias)
+from src.models import TestNet, AlexNet
 
 
 def get_duration(start_time):
@@ -25,48 +18,132 @@ def get_duration(start_time):
 def load_model(model_name, is_local_model):
     """ Ja hier moet dus documentatie """
     if is_local_model:
-        model = ms.TestNet()
-        summary(model, (3, 32, 32))
+        model = AlexNet(num_classes=200)
     else:
         if not hasattr(models, model_name):
             error_message = f"...model \"{model_name}\" is not supported or cannot be found in TorchVision models!"
+            logging.error(error_message)
             raise AttributeError(error_message)
         else:
             model = models.__dict__[model_name]
     return model
 
 
+def calculate_mean_std_(data_path, data_name):
+    train_set = datasets.ImageFolder(data_path + data_name + '/train', transform=transforms.ToTensor())
+
+    loader = data.DataLoader(train_set, batch_size=8)
+
+    nimages = 0
+    mean = 0.
+    std = 0.
+    for batch, _ in loader:
+        # Rearrange batch to be the shape of [B, C, W * H]
+        batch = batch.view(batch.size(0), batch.size(1), -1)
+        # Update total number of images
+        nimages += batch.size(0)
+        # Compute mean and std here
+        mean += batch.mean(2).sum(0)
+        std += batch.std(2).sum(0)
+
+    # Final step
+    mean /= nimages
+    std /= nimages
+
+    print(mean)
+    print(std)
+
+
 def load_dataset(data_path, data_name, number_of_clients, is_iid):
     """ Ja hier moet dus documentatie """
-    print("Loading datasets...")
+    logging.debug('Loading datasets..')
 
-    if not hasattr(torchvision.datasets, data_name):
-        # dataset not found exception
-        error_message = f"...dataset \"{data_name}\" is not supported or cannot be found in TorchVision Datasets!"
-        raise AttributeError(error_message)
-    else:
-        # prepare raw training & test datasets
+    if data_name == 'tiny-imagenet-200':
         transform_train = transforms.Compose([
+            transforms.Resize((32, 32)),
             transforms.ToTensor(),
-            transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
+            transforms.Normalize((0.4802, 0.4481, 0.3975), (0.2296, 0.2263, 0.2255)),
         ])
 
         transform_test = transforms.Compose([
+            transforms.Resize((32, 32)),
             transforms.ToTensor(),
-            transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
+            transforms.Normalize((0.4802, 0.4481, 0.3975), (0.2296, 0.2263, 0.2255)),
         ])
 
-        training_data = torchvision.datasets.__dict__[data_name](
-            root=data_path,
-            train=True,
-            download=True,
-            transform=transform_train
-        )
-        test_data = torchvision.datasets.__dict__[data_name](
-            root=data_path,
-            train=False,
-            download=True,
-            transform=transform_test
-        )
+        train_set = datasets.ImageFolder(root=data_path + data_name + '/train',
+                                         transform=transform_train
+                                         )
+        val_set = datasets.ImageFolder(root=data_path + data_name + '/val',
+                                       transform=transform_train
+                                       )
+        test_set = datasets.ImageFolder(root=data_path + data_name + '/test',
+                                        transform=transform_test
+                                        )
 
-    return training_data, test_data
+        logging.debug('Loading completed')
+        return train_set, test_set, val_set
+
+    else:
+
+        if not hasattr(torchvision.datasets, data_name):
+            # dataset not found exception
+            error_message = f"...dataset \"{data_name}\" is not supported or cannot be found in TorchVision Datasets!"
+            logging.error(error_message)
+            raise AttributeError(error_message)
+        else:
+            # prepare raw training & test datasets
+            transform_train = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
+            ])
+
+            transform_test = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
+            ])
+
+            training_data = torchvision.datasets.__dict__[data_name](
+                root=data_path,
+                train=True,
+                download=True,
+                transform=transform_train
+            )
+            test_data = torchvision.datasets.__dict__[data_name](
+                root=data_path,
+                train=False,
+                download=True,
+                transform=transform_test
+            )
+            logging.debug('Loading completed')
+
+        return training_data, test_data
+
+
+class AverageMeter(object):
+    """
+        Computes and stores the average and current value
+        Imported from https://github.com/pytorch/examples/blob/master/imagenet/main.py#L247-L262
+        Extended with the history list variable
+    """
+
+    def __init__(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+        self.history_list = []
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+        self.history_list = []
+
+    def update(self, val, n=1):
+        self.history_list.append(val)
+        self.val = val
+        self.sum = sum(self.history_list)
+        self.count += n
+        self.avg = self.sum / self.count
