@@ -71,6 +71,8 @@ class Client(object):
         self.model.train()
         self.model.to(self.device)
 
+        # Always declare optimizer after model is send to device
+        # Otherwise it won't learn at all
         self.optimizer = optimizers.__dict__[self.optimizer_name](
             params=self.model.parameters(),
             lr=self.learning_rate,

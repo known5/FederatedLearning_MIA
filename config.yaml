@@ -11,7 +11,7 @@ experiment_config:
 data_settings:
   data_path: "./data/"
   dataset_name: "tiny-imagenet-200"
-  local_split_ratio: 0.8
+  local_split_ratio: 0.001
   iid: False
 ---
 training_settings:
