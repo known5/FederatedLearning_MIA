@@ -1,23 +1,23 @@
 experiment_config:
   seed: 42
   device: "cpu"
-  local_eval: 1
-  global_eval: 0
+  local_eval: 0
+  global_eval: 6
   passive_attack: 0
 ---
 data_settings:
   data_path: "./data/"
-  dataset_name: "CIFAR100"
-  local_split_ratio: 0.8
+  dataset_name: "tiny-imagenet-200"
+  local_split_ratio: 0.01
   iid: False
 ---
 training_settings:
   number_of_clients: 1
-  training_rounds: 1
+  training_rounds: 8
   learning_rate: 0.01
   momentum: 0.9
-  weight_decay: 0.00005
-  epochs: 5
+  weight_decay: 0.0005
+  epochs: 2
   batch_size: 32
   loss_function: 'CrossEntropyLoss'
   optimizer: 'SGD'
@@ -31,4 +31,4 @@ model_settings:
 ---
 LOG_settings:
   log_path: "./log/"
-  log_name: "logfile"
+  log_level: "INFO"
