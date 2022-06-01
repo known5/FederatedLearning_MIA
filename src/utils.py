@@ -6,7 +6,6 @@ import torchvision.models as models
 import torchvision.transforms as transforms
 import torch.nn as nn
 import src.models as ms
-from torchsummary import summary
 
 
 def init_weights_normal(layer):
@@ -26,7 +25,6 @@ def load_model(model_name, is_local_model):
     """ Ja hier moet dus documentatie """
     if is_local_model:
         model = ms.TestNet()
-        summary(model, (3, 32, 32))
     else:
         if not hasattr(models, model_name):
             error_message = f"...model \"{model_name}\" is not supported or cannot be found in TorchVision models!"

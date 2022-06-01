@@ -4,7 +4,6 @@ import os
 import time
 import yaml
 import torch
-from torch.utils.tensorboard import SummaryWriter
 from src.utils import get_duration
 
 from src.server import CentralServer

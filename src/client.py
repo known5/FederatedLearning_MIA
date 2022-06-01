@@ -8,7 +8,7 @@ from src.utils import *
 
 class Client(object):
 
-    def __init__(self, client_id, training_param, device):
+    def __init__(self, client_id, training_param, device, model):
         """ Ja hier moet dus documentatie """
         self.loss_function = training_param['loss_function']
         if not hasattr(nn, self.loss_function):
@@ -17,7 +17,7 @@ class Client(object):
         else:
             self.loss_function = nn.__dict__[self.loss_function]()
         self.number_of_epochs = training_param['epochs']
-
+        self.model = model
         self.momentum = training_param['momentum']
         self.optimizer = optimizers.__dict__[training_param['optimizer']](
             params=self.model.parameters(),
@@ -30,20 +30,10 @@ class Client(object):
         self.client_id = client_id
         self.device = device
         self.data = None
-        self.__model = None
+
         self.training_dataloader = None
         self.testing_dataloader = None
         self.local_results = {"loss": [], "accuracy": []}
-
-    @property
-    def model(self):
-        """ Ja hier moet dus documentatie """
-        return self.__model
-
-    @model.setter
-    def model(self, model):
-        """ Ja hier moet dus documentatie """
-        self.__model = model
 
     def load_data(self, training_data, split_ratio):
         """ Ja hier moet dus documentatie """
@@ -83,8 +73,6 @@ class Client(object):
                 self.optimizer.step()
             print("Loss is: " + str(losses / len(self.training_dataloader)))
         # self.model.to("cpu")
-        end_time = time.time() - start_time
-        print(end_time)
 
     def test(self):
         self.model.eval()

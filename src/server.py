@@ -73,7 +73,7 @@ class CentralServer(object):
                 clients.append(Attacker(client_id, training_param, device=self.device))
                 attacker_is_generated = True
             else:
-                clients.append(Client(client_id, training_param, device=self.device))
+                clients.append(Client(client_id, training_param, device=self.device, model=self.model))
         print(f"Created {str(len(clients))} clients!")
         return clients
 
@@ -166,7 +166,7 @@ class CentralServer(object):
                 \n\t=> Accuracy: {100. * round_accuracy:.2f}%")
 
             # If checked, perform MIA during each round.
-        if self.do_passive_attack():
+        if self.do_passive_attack:
             attacker = self.clients[0]
 
         print(f"[Round {str(index).zfill(4)} End] ... Round time: {str(get_duration(start_time))} s/it")
