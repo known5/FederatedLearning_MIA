@@ -36,12 +36,6 @@ class Client(object):
         self.optimizer = None
         self.local_results = {"loss": [], "accuracy": []}
 
-        self.optimizer = optimizers.__dict__[self.optimizer_name](
-            params=self.model.parameters(),
-            lr=self.learning_rate,
-            momentum=self.momentum
-        )
-
     @property
     def model(self):
         """ Ja hier moet dus documentatie """
@@ -76,6 +70,12 @@ class Client(object):
         """ Ja hier moet dus documentatie """
         self.model.train()
         self.model.to(self.device)
+
+        self.optimizer = optimizers.__dict__[self.optimizer_name](
+            params=self.model.parameters(),
+            lr=self.learning_rate,
+            momentum=self.momentum
+        )
 
         for e in range(self.number_of_epochs):
             batch_time = AverageMeter()
