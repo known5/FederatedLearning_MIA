@@ -1,5 +1,4 @@
 import logging
-
 import torch.utils
 import torch.optim as optimizers
 import torch.nn as nn
@@ -36,6 +35,12 @@ class Client(object):
         self.optimizer = None
         self.local_results = {"loss": [], "accuracy": []}
 
+        self.optimizer = optimizers.__dict__[self.optimizer_name](
+            params=self.model.parameters(),
+            lr=self.learning_rate,
+            momentum=self.momentum
+        )
+
     @property
     def model(self):
         """ Ja hier moet dus documentatie """
@@ -71,20 +76,12 @@ class Client(object):
         self.model.train()
         self.model.to(self.device)
 
-        dataset_size = len(self.training_dataloader.dataset)
-
-        self.optimizer = optimizers.__dict__[self.optimizer_name](
-            params=self.model.parameters(),
-            lr=self.learning_rate,
-            momentum=self.momentum
-        )
-
         for e in range(self.number_of_epochs):
             batch_time = AverageMeter()
             losses = AverageMeter()
             accuracy = AverageMeter()
             start_time = time.time()
-            correct = 0
+
             for data, labels in self.training_dataloader:
                 # Transfer data to CPU or GPU and set gradients to zero for performance.
                 data, labels = data.float().to(self.device), labels.long().to(self.device)
@@ -101,11 +98,11 @@ class Client(object):
 
                 # Compare predictions to labels and get accuracy score.
                 predicted = outputs.argmax(dim=1, keepdim=True)
-                correct += predicted.eq(labels.view_as(predicted)).sum().item()
+                correct = predicted.eq(labels.view_as(predicted)).sum().item()
 
                 # Update loss, accuracy and run_time metrics
-                losses.update(loss.item())
-                accuracy.update((correct / dataset_size) * 100)
+                losses.update(loss.item(), self.batch_size)
+                accuracy.update(correct, self.batch_size)
                 batch_time.update(time.time() - start_time)
 
             message = f'[ Round: {round_number} ' \
@@ -114,7 +111,7 @@ class Client(object):
                       f'| Epoch: {e + 1} ' \
                       f'| Time: {batch_time.avg:.2f}s ' \
                       f'| Loss: {losses.avg:.5f} ' \
-                      f'| Train Accuracy {accuracy.avg:.2f}% ]'
+                      f'| Train Accuracy {accuracy.sum:.2f}% ]'
             logging.info(message)
         self.model.to("cpu")
 
@@ -123,12 +120,10 @@ class Client(object):
         self.model.eval()
         self.model.to(self.device)
 
-        dataset_size = len(self.training_dataloader.dataset)
-
         losses = AverageMeter()
         accuracy = AverageMeter()
         batch_time = AverageMeter()
-        correct = 0
+
         with torch.no_grad():
             start_time = time.time()
             for data, labels in self.training_dataloader:
@@ -141,10 +136,10 @@ class Client(object):
 
                 # Compare predictions to labels and get accuracy score.
                 predicted = outputs.argmax(dim=1, keepdim=True)
-                correct += predicted.eq(labels.view_as(predicted)).sum().item()
+                correct = predicted.eq(labels.view_as(predicted)).sum().item()
 
                 # Update time and accuracy metric.
-                accuracy.update((correct / dataset_size) * 100)
+                accuracy.update((correct / self.batch_size) * 100)
                 batch_time.update(time.time() - start_time)
 
             message = f'[ Round: {round_number} ' \
@@ -152,7 +147,7 @@ class Client(object):
                       f'| Time: {batch_time.avg:.2f}s ' \
                       f'| Client: {self.client_id} ' \
                       f'| Loss: {losses.avg:.5f} ' \
-                      f'| Train Accuracy {accuracy.avg:.2f}% ]'
+                      f'| Train Accuracy {accuracy.sum:.2f}% ]'
             logging.info(message)
 
         self.local_results = {"loss": [], "accuracy": []}

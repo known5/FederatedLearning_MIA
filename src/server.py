@@ -155,9 +155,6 @@ class CentralServer(object):
         losses = AverageMeter()
         accuracy = AverageMeter()
 
-        dataset_size = len(self.dataloader)
-        correct = 0
-
         start_time = time.time()
         message = f'[ Round: {round_number} | Global Model Eval started ]'
         logging.info(message)
@@ -169,17 +166,17 @@ class CentralServer(object):
                 loss = self.loss_function(outputs, labels)
 
                 predicted = outputs.argmax(dim=1, keepdim=True)
-                correct += predicted.eq(labels.view_as(predicted)).sum().item()
+                correct = predicted.eq(labels.view_as(predicted)).sum().item()
 
                 batch_time.update(time.time() - start_time)
                 losses.update(loss.item())
-                accuracy.update((correct / dataset_size) * 100)
+                accuracy.update((correct / self.batch_size) * 100)
 
             # Create and log message about training
             message = f'[ Round: {round_number} ' \
                       f'| Time: {batch_time.avg:.2f}s ' \
                       f'| Loss: {losses.avg:.5f}' \
-                      f'| Accuracy: {accuracy.avg:.2f}% ]'
+                      f'| Accuracy: {accuracy.sum:.2f}% ]'
             logging.info(message)
         self.model.to("cpu")
 
