@@ -1,13 +1,32 @@
 import copy
 import logging
+import shutil
 import time
 import torch
 from torch.utils.data import DataLoader
+import os
 
 from src.client import Client
 from src.attacker import Attacker
 from src.utils import load_dataset, load_model, AverageMeter
 import torch.nn as nn
+
+
+# utils
+
+
+def save_checkpoint(state, is_best, checkpoint='checkpoint', filename='checkpoint.pth.tar'):
+    filepath = os.path.join(checkpoint, filename)
+    torch.save(state, filepath)
+    if is_best:
+        shutil.copyfile(filepath, os.path.join(checkpoint, 'model_best.pth.tar'))
+
+
+def save_checkpoint_adversary(state, is_best, checkpoint='checkpoint', filename='checkpoint.pth.tar'):
+    filepath = os.path.join(checkpoint, filename)
+    torch.save(state, filepath)
+    if is_best:
+        shutil.copyfile(filepath, os.path.join(checkpoint, 'model_adversary_best.pth.tar'))
 
 
 class CentralServer(object):
@@ -21,6 +40,9 @@ class CentralServer(object):
         self.do_local_eval = experiment_param['local_eval']
         self.do_global_eval = experiment_param['global_eval']
         self.do_passive_attack = experiment_param['passive_attack']
+        self.save_model = experiment_param['save_model']
+        self.model_path = experiment_param['model_path']
+        self.save_attack_model = experiment_param['save_attack_model']
 
         self.dataset_path = data_param['data_path']
         self.dataset_name = data_param['dataset_name']
@@ -155,6 +177,9 @@ class CentralServer(object):
         losses = AverageMeter()
         accuracy = AverageMeter()
 
+        dataset_size = len(self.dataloader)
+        correct = 0
+
         start_time = time.time()
         message = f'[ Round: {round_number} | Global Model Eval started ]'
         logging.info(message)
@@ -168,15 +193,16 @@ class CentralServer(object):
                 predicted = outputs.argmax(dim=1, keepdim=True)
                 correct = predicted.eq(labels.view_as(predicted)).sum().item()
 
+                # Update loss, accuracy and run_time metrics
+                losses.update(loss.item(), self.batch_size)
+                accuracy.update(correct, self.batch_size)
                 batch_time.update(time.time() - start_time)
-                losses.update(loss.item())
-                accuracy.update((correct / self.batch_size) * 100)
 
             # Create and log message about training
             message = f'[ Round: {round_number} ' \
                       f'| Time: {batch_time.avg:.2f}s ' \
                       f'| Loss: {losses.avg:.5f}' \
-                      f'| Accuracy: {accuracy.sum:.2f}% ]'
+                      f'| Accuracy: {accuracy.avg:.2f}% ]'
             logging.info(message)
         self.model.to("cpu")
 
@@ -184,7 +210,7 @@ class CentralServer(object):
 
     def perform_experiment(self, start_time=None):
         """ Ja hier moet dus documentatie """
-
+        round_loss, round_accuracy = 0, 0
         for index in range(self.number_of_training_rounds):
             # Do training cycle
             index += 1
@@ -201,3 +227,28 @@ class CentralServer(object):
             # If checked, perform MIA during each round.
             if self.do_passive_attack and index % self.do_passive_attack == 0:
                 attacker = self.clients[0]
+            if self.save_model > 1 and index % self.save_model == 0:
+                is_best = round_accuracy > max(self.results['accuracy'])
+                if is_best:
+                    save_checkpoint({
+                        'epoch': index,
+                        'state_dict': self.model.state_dict(),
+                        'acc': round_accuracy,
+                        'best_acc': is_best
+                    }, is_best=is_best,
+                        filename=f'epoch_{index}_main',
+                        checkpoint=self.model_path
+                    )
+            if self.save_attack_model > 1 and index % self.save_attack_model == 0:
+                # TODO
+                is_best = round_accuracy > max(self.results['accuracy'])
+                if is_best:
+                    save_checkpoint_adversary({
+                        'epoch': index,
+                        'state_dict': self.clients[0].model.state_dict(),
+                        'acc': round_accuracy,
+                        'best_acc': is_best
+                    }, is_best=is_best,
+                        filename=f'epoch_{index}_attack',
+                        checkpoint=self.model_path
+                    )

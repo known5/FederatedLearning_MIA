@@ -4,7 +4,7 @@ import torchvision
 import torchvision.models as models
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-import torch.utils.data as data
+import torch.utils.data as data_util
 
 from src.models import TestNet, AlexNet
 
@@ -32,7 +32,7 @@ def load_model(model_name, is_local_model):
 def calculate_mean_std_(data_path, data_name):
     train_set = datasets.ImageFolder(data_path + data_name + '/train', transform=transforms.ToTensor())
 
-    loader = data.DataLoader(train_set, batch_size=8)
+    loader = data_util.DataLoader(train_set, batch_size=8)
 
     nimages = 0
     mean = 0.
@@ -128,22 +128,20 @@ class AverageMeter(object):
     """
 
     def __init__(self):
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
-        self.history_list = []
+        self.count = None
+        self.sum = None
+        self.avg = None
+        self.val = None
+        self.reset()
 
     def reset(self):
         self.val = 0
         self.avg = 0
         self.sum = 0
         self.count = 0
-        self.history_list = []
 
     def update(self, val, n=1):
-        self.history_list.append(val)
         self.val = val
-        self.sum = sum(self.history_list)
+        self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
