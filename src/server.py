@@ -201,8 +201,8 @@ class CentralServer(object):
             # Create and log message about training
             message = f'[ Round: {round_number} ' \
                       f'| Time: {batch_time.avg:.2f}s ' \
-                      f'| Loss: {losses.avg:.5f}' \
-                      f'| Accuracy: {accuracy.avg:.2f}% ]'
+                      f'| Loss: {losses.sum:.5f}' \
+                      f'| Accuracy: {accuracy.avg * 100:.2f}% ]'
             logging.info(message)
         self.model.to("cpu")
 
