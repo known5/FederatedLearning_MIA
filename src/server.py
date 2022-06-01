@@ -194,14 +194,14 @@ class CentralServer(object):
                 correct = predicted.eq(labels.view_as(predicted)).sum().item()
 
                 # Update loss, accuracy and run_time metrics
-                losses.update(loss.item(), self.batch_size)
+                losses.update(loss.item())
                 accuracy.update(correct, self.batch_size)
                 batch_time.update(time.time() - start_time)
 
             # Create and log message about training
             message = f'[ Round: {round_number} ' \
                       f'| Time: {batch_time.avg:.2f}s ' \
-                      f'| Loss: {losses.sum:.5f}' \
+                      f'| Loss: {losses.avg:.5f}' \
                       f'| Accuracy: {accuracy.avg * 100:.2f}% ]'
             logging.info(message)
         self.model.to("cpu")

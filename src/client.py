@@ -113,7 +113,7 @@ class Client(object):
                       f'| Client: {self.client_id} ' \
                       f'| Epoch: {e + 1} ' \
                       f'| Time: {batch_time.avg:.2f}s ' \
-                      f'| Loss: {losses.sum:.5f} ' \
+                      f'| Loss: {losses.avg:.5f} ' \
                       f'| Train Accuracy {accuracy.avg * 100:.2f}% ]'
             logging.info(message)
         self.model.to("cpu")
@@ -149,7 +149,7 @@ class Client(object):
                       f'| Local Eval ' \
                       f'| Time: {batch_time.avg:.2f}s ' \
                       f'| Client: {self.client_id} ' \
-                      f'| Loss: {losses.sum:.5f} ' \
+                      f'| Loss: {losses.avg:.5f} ' \
                       f'| Train Accuracy {accuracy.avg * 100:.2f}% ]'
             logging.info(message)
 
