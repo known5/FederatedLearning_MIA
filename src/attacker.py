@@ -154,7 +154,6 @@ class Attacker(Client):
 
         for epoch in range(self.attack_epochs):
             self.train_attack()
-
             if self.eval_attack > 0 and epoch % self.eval_attack == 0:
                 self.test_attack()
 
