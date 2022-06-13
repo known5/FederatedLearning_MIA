@@ -5,6 +5,7 @@ import torchvision.models as models
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torch.utils.data as data_util
+import torch
 
 from src.models import TestNet, AlexNet
 
@@ -54,7 +55,7 @@ def calculate_mean_std_(data_path, data_name):
     print(std)
 
 
-def load_dataset(data_path, data_name, number_of_clients, is_iid):
+def load_dataset(data_path, data_name):
     """ Ja hier moet dus documentatie """
     logging.debug('Loading datasets..')
 
@@ -74,15 +75,14 @@ def load_dataset(data_path, data_name, number_of_clients, is_iid):
         train_set = datasets.ImageFolder(root=data_path + data_name + '/train',
                                          transform=transform_train
                                          )
-        val_set = datasets.ImageFolder(root=data_path + data_name + '/val',
-                                       transform=transform_train
-                                       )
+
         test_set = datasets.ImageFolder(root=data_path + data_name + '/test',
                                         transform=transform_test
                                         )
 
         logging.debug('Loading completed')
-        return train_set, test_set, val_set
+
+        return train_set, test_set
 
     else:
 
@@ -109,6 +109,7 @@ def load_dataset(data_path, data_name, number_of_clients, is_iid):
                 download=True,
                 transform=transform_train
             )
+
             test_data = torchvision.datasets.__dict__[data_name](
                 root=data_path,
                 train=False,
@@ -118,6 +119,11 @@ def load_dataset(data_path, data_name, number_of_clients, is_iid):
             logging.debug('Loading completed')
 
         return training_data, test_data
+
+
+def accuracy(predictions, labels):
+    classes = torch.argmax(predictions, dim=1)
+    return torch.mean((classes == labels).float())
 
 
 class AverageMeter(object):
@@ -142,6 +148,6 @@ class AverageMeter(object):
 
     def update(self, correct, n=1):
         self.correct = correct
-        self.sum += correct
+        self.sum += correct * n
         self.total += n
         self.avg = self.sum / self.total

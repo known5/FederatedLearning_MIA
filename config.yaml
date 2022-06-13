@@ -1,29 +1,32 @@
 experiment_config:
   seed: 42
   device: "cpu"
+  train_model: 1
   local_eval: 0
-  global_eval: 2
+  global_eval: 0
   passive_attack: 0
   save_model: 0
   save_attack_model: 0
   model_path: './models/'
+  attack_data_distribution: [64, 64, 2000, 2000]
 ---
 data_settings:
   data_path: "./data/"
   dataset_name: "tiny-imagenet-200"
-  local_split_ratio: 0.001
   iid: False
 ---
 training_settings:
   number_of_clients: 1
-  training_rounds: 4
+  training_rounds: 10
   learning_rate: 0.01
   momentum: 0.9
   weight_decay: 0.0005
-  epochs: 5
-  batch_size: 32
+  epochs: 1
+  batch_size: 64
   loss_function: 'CrossEntropyLoss'
   optimizer: 'SGD'
+  attack_loss_function: 'MSELoss'
+  attack_optimizer: 'Adam'
 ---
 model_settings:
   name: "alexnet"

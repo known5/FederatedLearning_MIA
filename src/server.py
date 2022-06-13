@@ -37,16 +37,17 @@ class CentralServer(object):
     def __init__(self, experiment_param, data_param, training_param, model_param):
         """ Ja hier moet dus documentatie """
         self.device = experiment_param['device']
+        self.train_model = experiment_param['train_model']
         self.do_local_eval = experiment_param['local_eval']
         self.do_global_eval = experiment_param['global_eval']
         self.do_passive_attack = experiment_param['passive_attack']
         self.save_model = experiment_param['save_model']
         self.model_path = experiment_param['model_path']
         self.save_attack_model = experiment_param['save_attack_model']
+        self.attack_data_distribution = experiment_param['attack_data_distribution']
 
         self.dataset_path = data_param['data_path']
         self.dataset_name = data_param['dataset_name']
-        self.split_ratio = data_param['local_split_ratio']
         self.is_idd = data_param['iid']
 
         self.training_param = training_param
@@ -64,28 +65,25 @@ class CentralServer(object):
 
         self.model_param = model_param
         self.results = {"loss": [], "accuracy": []}
+        self.attack_results = {"loss": [], "accuracy": []}
 
         self.test_data = None
-        self.dataloader = None
-        self.model = load_model(self.model_param['name'],
-                                self.model_param['is_local_model'])
+        self.global_test_dataloader = None
         self.clients = None
+        self.model = None
 
     def start_up(self):
         """ Ja hier moet dus documentatie """
-        split_datasets, self.test_data = self.divide_datasets(self.dataset_name,
-                                                              self.dataset_path,
-                                                              self.number_of_clients,
-                                                              self.is_idd)
-        self.dataloader = DataLoader(self.test_data,
-                                     batch_size=self.batch_size,
-                                     shuffle=False,
-                                     num_workers=2,
-                                     pin_memory=True
-                                     )
 
+        self.model = load_model(self.model_param['name'],
+                                self.model_param['is_local_model'])
         self.clients = self.generate_clients(self.training_param)
-        self.distribute_data_among_clients(split_datasets, self.split_ratio)
+        self.load_datasets(self.dataset_name,
+                           self.dataset_path,
+                           self.number_of_clients,
+                           self.is_idd)
+
+        self.share_model_with_clients()
         message = 'Completed main server startup'
         logging.debug(message)
 
@@ -115,33 +113,42 @@ class CentralServer(object):
 
         return clients
 
-    def divide_datasets(self, data_name, data_path, number_of_clients, is_iid):
+    def load_datasets(self, data_name, data_path, number_of_clients, is_iid):
         """ Ja hier moet dus documentatie """
         # load correct dataset from torchvision
-        training_data, test_data, val_data = load_dataset(data_path, data_name, number_of_clients, is_iid)
+        training_data, test_data = load_dataset(data_path, data_name)
+        self.global_test_dataloader = DataLoader(test_data,
+                                                 batch_size=self.batch_size,
+                                                 shuffle=False,
+                                                 num_workers=2,
+                                                 pin_memory=True
+                                                 )
+
         # randomly split training data so each client has its own data set.
-        training_data_length = len(training_data) // self.number_of_clients
+        training_data_length = len(training_data) // number_of_clients
+        length_split = [training_data_length for _ in range(self.number_of_clients)]
+        training_data_split = torch.utils.data.random_split(training_data, length_split)
+
         message = f"Splitting dataset of size {len(training_data)}" \
                   f" into {self.number_of_clients}" \
                   f" parts of size {training_data_length}..."
         logging.info(message)
-        length_split = [training_data_length for x in range(self.number_of_clients)]
-        training_data_split = torch.utils.data.random_split(training_data, length_split)
 
-        return training_data_split, test_data
+        # send data to clients for training.
+        for k, client in enumerate(self.clients):
+            client.load_data(training_data_split[k])
+        message = 'Distributed data among clients'
+        logging.debug(message)
+
+        if self.do_passive_attack > 0:
+            # Send data files to attacker for inference
+            self.clients[0].load_attack_data(training_data, test_data, self.attack_data_distribution)
 
     def share_model_with_clients(self):
         """ Ja hier moet dus documentatie """
         for client in self.clients:
             client.model = copy.deepcopy(self.model)
         message = 'Shared model with clients...'
-        logging.debug(message)
-
-    def distribute_data_among_clients(self, split_datasets, split_ratio):
-        """ Ja hier moet dus documentatie """
-        for k, client in enumerate(self.clients):
-            client.load_data(split_datasets[k], split_ratio)
-        message = 'Distributed data among clients'
         logging.debug(message)
 
     def aggregate_model(self):
@@ -158,15 +165,10 @@ class CentralServer(object):
     def do_training(self, round_number):
         """ Ja hier moet dus documentatie """
         # Do client training
-        message = f'[ Round: {round_number} | Started! ]'
-        logging.info(message)
         for client in self.clients:
             client.train(round_number)
             if self.do_local_eval > 0 and round_number % self.do_local_eval == 0:
                 client.test(round_number)
-
-        message = f'[ Round: {round_number} | Finished! ]'
-        logging.info(message)
 
     def test_global_model(self, round_number):
         """ Ja hier moet dus documentatie """
@@ -177,21 +179,22 @@ class CentralServer(object):
         losses = AverageMeter()
         accuracy = AverageMeter()
 
-        dataset_size = len(self.dataloader)
         correct = 0
+        total = 0
 
         start_time = time.time()
         message = f'[ Round: {round_number} | Global Model Eval started ]'
         logging.info(message)
 
         with torch.no_grad():
-            for batch_idx, (data, labels) in enumerate(self.dataloader):
+            for batch_idx, (data, labels) in enumerate(self.global_test_dataloader):
                 data, labels = data.float().to(self.device), labels.long().to(self.device)
                 outputs = self.model(data)
                 loss = self.loss_function(outputs, labels)
 
-                predicted = outputs.argmax(dim=1, keepdim=True)
-                correct = predicted.eq(labels.view_as(predicted)).sum().item()
+                _, predicted = torch.max(outputs.data, 1)
+                total += labels.size(0)
+                correct += (predicted == labels).sum().item()
 
                 # Update loss, accuracy and run_time metrics
                 losses.update(loss.item())
@@ -202,53 +205,62 @@ class CentralServer(object):
             message = f'[ Round: {round_number} ' \
                       f'| Time: {batch_time.avg:.2f}s ' \
                       f'| Loss: {losses.avg:.5f}' \
-                      f'| Accuracy: {accuracy.avg * 100:.2f}% ]'
+                      f'| Accuracy: ({correct}/{total})={(100 * correct / total):.2f}% ]'
             logging.info(message)
         self.model.to("cpu")
 
         return losses.avg, accuracy.avg
 
-    def perform_experiment(self, start_time=None):
+    def perform_experiment(self):
         """ Ja hier moet dus documentatie """
         round_loss, round_accuracy = 0, 0
+        attacker = self.clients[0]
         for index in range(self.number_of_training_rounds):
-            # Do training cycle
             index += 1
-            self.share_model_with_clients()
-            self.do_training(index)
-            self.aggregate_model()
-            # If checked, perform global model evaluation every round.
-            if self.do_global_eval > 0 and index % self.do_global_eval == 0:
-                round_loss, round_accuracy = self.test_global_model(index)
+            message = f'[ Round: {index} | Started! ]'
+            logging.info(message)
+            # If checked, do training cycle
+            if self.train_model > 0 and index % self.train_model == 0:
+                self.do_training(index)
+                self.aggregate_model()
+                self.share_model_with_clients()
 
-                self.results['loss'].append(round_loss)
-                self.results['accuracy'].append(round_accuracy)
+                # If checked, perform global model evaluation every round.
+                if self.do_global_eval > 0 and index % self.do_global_eval == 0:
+                    round_loss, round_accuracy = self.test_global_model(index)
+                    self.results['loss'].append(round_loss)
+                    self.results['accuracy'].append(round_accuracy)
+                # If checked, save the current model and optimizer state
+                if self.save_model > 1 and index % self.save_model == 0:
+                    is_best = round_accuracy > max(self.results['accuracy'])
+                    if is_best:
+                        save_checkpoint({
+                            'epoch': index,
+                            'state_dict': self.model.state_dict(),
+                            'acc': round_accuracy,
+                            'best_acc': is_best
+                        }, is_best=is_best,
+                            filename=f'epoch_{index}_main',
+                            checkpoint=self.model_path
+                        )
 
             # If checked, perform MIA during each round.
             if self.do_passive_attack and index % self.do_passive_attack == 0:
-                attacker = self.clients[0]
-            if self.save_model > 1 and index % self.save_model == 0:
-                is_best = round_accuracy > max(self.results['accuracy'])
-                if is_best:
-                    save_checkpoint({
-                        'epoch': index,
-                        'state_dict': self.model.state_dict(),
-                        'acc': round_accuracy,
-                        'best_acc': is_best
-                    }, is_best=is_best,
-                        filename=f'epoch_{index}_main',
-                        checkpoint=self.model_path
-                    )
-            if self.save_attack_model > 1 and index % self.save_attack_model == 0:
-                # TODO
-                is_best = round_accuracy > max(self.results['accuracy'])
-                if is_best:
-                    save_checkpoint_adversary({
-                        'epoch': index,
-                        'state_dict': self.clients[0].model.state_dict(),
-                        'acc': round_accuracy,
-                        'best_acc': is_best
-                    }, is_best=is_best,
-                        filename=f'epoch_{index}_attack',
-                        checkpoint=self.model_path
-                    )
+                attacker.perform_attack(index)
+
+                if self.save_attack_model > 1 and index % self.save_attack_model == 0:
+                    is_best = round_accuracy > max(self.attack_results['accuracy'])
+                    if is_best:
+                        save_checkpoint_adversary({
+                            'epoch': index,
+                            'state_dict': self.clients[0].model.state_dict(),
+                            'acc': round_accuracy,
+                            'best_acc': is_best,
+                            'optimizer': attacker.attack_optimizer.state.dict()
+                        }, is_best=is_best,
+                            filename=f'epoch_{index}_attack',
+                            checkpoint=self.model_path
+                        )
+
+            message = f'[ Round: {index} | Finished! ]'
+            logging.info(message)
