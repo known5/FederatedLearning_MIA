@@ -1,8 +1,8 @@
 experiment_config:
   seed: 42
-  device: "cpu"
+  device: "cuda"
   local_eval: 0
-  global_eval: 2
+  global_eval: 5
   passive_attack: 0
   save_model: 0
   save_attack_model: 0
@@ -11,12 +11,12 @@ experiment_config:
 data_settings:
   data_path: "./data/"
   dataset_name: "tiny-imagenet-200"
-  local_split_ratio: 0.001
+  local_split_ratio: 0.8
   iid: False
 ---
 training_settings:
-  number_of_clients: 1
-  training_rounds: 4
+  number_of_clients: 4
+  training_rounds: 5
   learning_rate: 0.01
   momentum: 0.9
   weight_decay: 0.0005
