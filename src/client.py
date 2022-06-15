@@ -1,11 +1,10 @@
-import logging
 import time
+import logging
 
 import torch.utils
 import torch.optim as optimizers
-import torch.nn as nn
 from torch.utils.data import DataLoader
-from src.utils import AverageMeter
+from src.utils import AverageMeter, get_torch_loss_function
 
 
 class Client(object):
@@ -13,14 +12,7 @@ class Client(object):
     def __init__(self, client_id, training_param, device, model):
         """ Ja hier moet dus documentatie """
         self.__model = None
-        self.loss_function = training_param['loss_function']
-        if not hasattr(nn, self.loss_function):
-            error_message = f"...Loss Function: \"{self.loss_function}\" is not supported or cannot be found in " \
-                            f"Torch Optimizers! "
-            logging.error(error_message)
-            raise AttributeError(error_message)
-        else:
-            self.loss_function = nn.__dict__[self.loss_function]()
+        self.loss_function = get_torch_loss_function(training_param['loss_function'])
         self.number_of_epochs = training_param['epochs']
         self.model = model
         self.optimizer_name = training_param['optimizer']

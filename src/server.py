@@ -8,11 +8,7 @@ import os
 
 from src.client import Client
 from src.attacker import Attacker
-from src.utils import load_dataset, load_model, AverageMeter
-import torch.nn as nn
-
-
-# utils
+from src.utils import load_dataset, load_model, AverageMeter, get_torch_loss_function
 
 
 def save_checkpoint(state, is_best, checkpoint='checkpoint', filename='checkpoint.pth.tar'):
@@ -34,17 +30,18 @@ class CentralServer(object):
     Ja hier moet dus documentatie
     """
 
-    def __init__(self, experiment_param, data_param, training_param, model_param):
+    def __init__(self, experiment_param, attack_param, data_param, training_param, model_param):
         """ Ja hier moet dus documentatie """
         self.device = experiment_param['device']
         self.train_model = experiment_param['train_model']
         self.do_local_eval = experiment_param['local_eval']
         self.do_global_eval = experiment_param['global_eval']
-        self.do_passive_attack = experiment_param['passive_attack']
         self.save_model = experiment_param['save_model']
         self.model_path = experiment_param['model_path']
-        self.save_attack_model = experiment_param['save_attack_model']
-        self.attack_data_distribution = experiment_param['attack_data_distribution']
+
+        self.attack_param = attack_param
+        self.do_passive_attack = attack_param['passive_attack']
+        self.save_attack_model = attack_param['save_attack_model']
 
         self.dataset_path = data_param['data_path']
         self.dataset_name = data_param['dataset_name']
@@ -53,15 +50,8 @@ class CentralServer(object):
         self.training_param = training_param
         self.number_of_clients = training_param['number_of_clients']
         self.number_of_training_rounds = training_param['training_rounds']
-        self.loss_function = training_param['loss_function']
+        self.loss_function = get_torch_loss_function(training_param['loss_function'])
         self.batch_size = training_param['batch_size']
-        if not hasattr(nn, self.loss_function):
-            error_message = f"...Optimizer \"{self.loss_function}\" is not supported or cannot be found in Torch " \
-                            f"Optimizers! "
-            logging.error(error_message)
-            raise AttributeError(error_message)
-        else:
-            self.loss_function = nn.__dict__[self.loss_function]()
 
         self.model_param = model_param
         self.results = {"loss": [], "accuracy": []}
@@ -77,7 +67,7 @@ class CentralServer(object):
 
         self.model = load_model(self.model_param['name'],
                                 self.model_param['is_local_model'])
-        self.clients = self.generate_clients(self.training_param)
+        self.clients = self.generate_clients(self.training_param, self.attack_param)
         self.load_datasets(self.dataset_name,
                            self.dataset_path,
                            self.number_of_clients,
@@ -87,7 +77,7 @@ class CentralServer(object):
         message = 'Completed main server startup'
         logging.debug(message)
 
-    def generate_clients(self, training_param):
+    def generate_clients(self, training_param, attack_param):
         """ Ja hier moet dus documentatie """
         attacker_is_generated = False
         clients = []
@@ -95,10 +85,9 @@ class CentralServer(object):
             if self.do_passive_attack > 0 and not attacker_is_generated:
                 clients.append(Attacker(client_id + 1,
                                         training_param,
+                                        attack_param,
                                         device=self.device,
-                                        target_train_model=copy.deepcopy(self.model),
-                                        exploit_layers=[24],
-                                        exploit_gradients=[6]
+                                        target_train_model=copy.deepcopy(self.model)
                                         )
                                )
                 attacker_is_generated = True
@@ -142,7 +131,7 @@ class CentralServer(object):
 
         if self.do_passive_attack > 0:
             # Send data files to attacker for inference
-            self.clients[0].load_attack_data(training_data, test_data, self.attack_data_distribution)
+            self.clients[0].load_attack_data(training_data, test_data)
 
     def share_model_with_clients(self):
         """ Ja hier moet dus documentatie """
