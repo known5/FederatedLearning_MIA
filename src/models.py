@@ -27,7 +27,7 @@ def get_output_shape_of_last_layer(target_model):
     output_shape = None
     for name, param in target_model.named_parameters():
         if 'weight' in name:
-            output_shape = param.size()[1]
+            output_shape = param.size()[0]
     return output_shape
 
 
@@ -98,12 +98,11 @@ class AttackModel(nn.Module):
                  exploit_last_layer=True,
                  exploit_label=True,
                  exploit_loss=True,
-                 exploit_gradient=True
+                 exploit_gradient=False,
+                 number_of_classes=100
                  ):
         super(AttackModel, self).__init__()
-        self.target_output = get_output_shape_of_last_layer(target_model)
         self.last_layer_name = get_last_layer_name(target_model)
-
         self.encoder_inputs = []
         self.model = target_model
 
@@ -112,55 +111,51 @@ class AttackModel(nn.Module):
         self.exploit_loss = exploit_loss
         self.exploit_gradient = exploit_gradient
 
-        self.layer_component = None
-        self.label_component = None
-        self.loss_component = None
-        self.gradient_component = None
-
         # create component if last layer is to be exploited
         if exploit_last_layer:
-            self.layer_component = FcnComponent(self.target_output, 100)
+            self.layer_component = FcnComponent(number_of_classes, 100)
             module_output = get_output_shape_of_last_layer(self.layer_component)
             self.encoder_inputs.append(module_output)
 
             # create component if OHE label is to be exploited
         if exploit_label:
-            self.label_component = FcnComponent(self.target_output)
+            self.label_component = FcnComponent(number_of_classes, 128)
             module_output = get_output_shape_of_last_layer(self.label_component)
             self.encoder_inputs.append(module_output)
 
             # create component if loss value is to be exploited
         if exploit_loss:
-            self.loss_component = FcnComponent(1, 100)
+            self.loss_component = FcnComponent(1, number_of_classes)
             module_output = get_output_shape_of_last_layer(self.loss_component)
             self.encoder_inputs.append(module_output)
 
             # creates CNN/FCN component for gradient values of layers of gradients to exploit
         if exploit_gradient:
-            self.gradient_component = CnnForFcnGradComponent(self.target_output)
+            self.gradient_component = GradientComponent(number_of_classes)
             module_output = get_output_shape_of_last_layer(self.gradient_component)
             self.encoder_inputs.append(module_output)
 
         self.encoder = AutoEncoder(self.encoder_inputs)
 
-    def forward(self, layer=torch.Tensor, labels=torch.Tensor, loss=torch.Tensor,
-                gradient=torch.Tensor) -> torch.Tensor:
-        inputs = []
+    def forward(self, inputs) -> torch.Tensor:
+        encoder_inputs = []
         if self.exploit_last_layer:
-            inputs.append(self.layer_component(layer))
+            temp = self.layer_component(inputs[0])
+            encoder_inputs.append(temp)
 
         if self.exploit_label:
-            inputs.append(self.label_component(labels))
+            encoder_inputs.append(self.label_component(inputs[1]))
 
         if self.exploit_loss:
-            inputs.append(self.loss_component(loss))
+            temp = self.loss_component(inputs[2])
+            encoder_inputs.append(temp)
 
         if self.exploit_gradient:
-            inputs.append(self.gradient_component(gradient))
+            temp = self.gradient_component(inputs[3])
+            encoder_inputs.append(temp)
 
-        x = torch.cat(inputs, dim=1)
-        self.classifier(x)
-        return x
+        x = torch.cat(encoder_inputs, dim=1)
+        return self.encoder(x)
 
 
 class AutoEncoder(nn.Module):
@@ -196,7 +191,7 @@ class FcnComponent(nn.Module):
         self.fcn = nn.Sequential(
             nn.Linear(input_size, layer_size),
             nn.ReLU(),
-            nn.Linear(128, 64),
+            nn.Linear(layer_size, 64),
             nn.ReLU()
         )
         self.fcn.apply(init_weights_normal)
@@ -206,109 +201,30 @@ class FcnComponent(nn.Module):
         return self.fcn(x)
 
 
-class CnnForFcnGradComponent(nn.Module):
+class GradientComponent(nn.Module):
 
-    def __init__(self, input_size):
+    def __init__(self, number_of_classes=100):
         """ Ja hier moet dus documentatie """
-        super(CnnForFcnGradComponent, self).__init__()
-        dim = input_size
+        super(GradientComponent, self).__init__()
 
         self.cnn = nn.Sequential(
-            nn.Dropout(0.2),
-            nn.Conv2d(in_channels=dim,
-                      out_channels=100,
-                      kernel_size=(1, dim),
-                      stride=(1, 1),
-                      padding='valid'),
+            nn.Dropout(p=0.2),
+            nn.Conv2d(1, 1000, kernel_size=(1, 100), stride=1),
             nn.ReLU(),
-            nn.Flatten(),
-            nn.Dropout(0.2),
-            nn.Linear(2024, 2024),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(512, 512),
-            nn.ReLU(),
-            nn.Linear(512, 256),
-            nn.ReLU()
         )
-        self.cnn.apply(init_weights_normal)
+        self.linear = nn.Sequential(
+            nn.Dropout(p=0.2),
+            nn.Linear(256 * number_of_classes, 1024),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Linear(1024, 512),
+            nn.ReLU(),
+            nn.Linear(512, 128),
+            nn.ReLU(),
+        )
+        self.linear.apply(init_weights_normal)
 
     def forward(self, x):
         """ Ja hier moet dus documentatie """
-        return self.cnn(x)
-
-
-class CnnForCnnLayerOutputsComponent(nn.Module):
-
-    def __init__(self, input_size):
-        """ Ja hier moet dus documentatie """
-        super(CnnForCnnLayerOutputsComponent, self).__init__()
-
-        dim2 = int(input_size[1])
-        dim4 = int(input_size[3])
-
-        self.cnn = nn.Sequential(
-            nn.Conv2d(in_channels=dim2,
-                      out_channels=dim4,
-                      kernel_size=(1, 1),
-                      padding='valid'
-                      ),
-            nn.ReLU(),
-            nn.Flatten(),
-            nn.Dropout(0.2),
-            nn.Linear(in_features=dim4,
-                      out_features=1024,
-                      ),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(in_features=1024,
-                      out_features=512,
-                      ),
-            nn.ReLU(),
-            nn.Linear(in_features=512,
-                      out_features=128,
-                      ),
-            nn.ReLU(),
-            nn.Linear(in_features=128,
-                      out_features=64,
-                      ),
-            nn.ReLU(),
-        )
-        self.cnn.apply(init_weights_normal)
-
-    def forward(self, x):
-        """ Ja hier moet dus documentatie """
-        return self.cnn(x)
-
-
-class CnnForCnnGradComponent(nn.Module):
-
-    def __init__(self, input_size):
-        """ Ja hier moet dus documentatie """
-        super(CnnForCnnGradComponent, self).__init__()
-
-        dim1 = int(input_size[3])
-        dim2 = int(input_size[0])
-        dim3 = int(input_size[1])
-
-        self.cnn = nn.Sequential(
-            nn.Conv2d(in_channels=dim3,
-                      out_channels=dim1,
-                      kernel_size=(dim2, dim3),
-                      stride=(1, 1),
-                      padding='same',
-                      ),
-            nn.ReLU(),
-            nn.Flatten(),
-            nn.Dropout(0.2),
-            nn.Linear(in_features=dim1,
-                      out_features=64
-                      ),
-            nn.ReLU()
-        )
-
-        self.cnn.apply(init_weights_normal)
-
-    def forward(self, x):
-        """ Ja hier moet dus documentatie """
-        return self.cnn(x)
+        temp = self.cnn(x).view(x.size()[0], -1)
+        return self.linear(temp)

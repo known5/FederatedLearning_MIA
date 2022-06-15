@@ -1,12 +1,17 @@
 import logging
+import time
 
+import numpy as np
 import torch
 import torch.utils
+import torch.nn as nn
 import torch.nn.functional as f
+import torch.optim as optimizers
 from torch.utils.data import DataLoader
 
 from src.models import AttackModel, get_output_shape_of_last_layer
 from .client import Client
+from src.utils import AverageMeter
 
 
 def create_ohe(output_size):
@@ -40,58 +45,74 @@ class Attacker(Client):
         super().__init__(client_id, local_data, device, target_train_model)
         self.attack_epochs = 1
         self.eval_attack = 0
-        self.exploit_gradient = None
-        self.exploit_last_layer = None
+        self.exploit_gradient = True
+        self.exploit_last_layer = True
         self.encoder = None
-        self.layers_to_exploit = exploit_layers
-        self.gradients_to_exploit = exploit_gradients
         self.exploit_loss = True,
         self.exploit_label = True,
         # self.learning_rate = 0.001
         self.epochs = 1
+        self.attack_batch_size = 64
         self.output_size = int(get_output_shape_of_last_layer(self.model))
         self.one_hot_encoding = create_ohe(self.output_size)
 
-        self.member_attack_train_dataloader = None
-        self.non_member_attack_train_dataloader = None
-        self.member_attack_test_dataloader = None
-        self.non_member_attack_test_dataloader = None
+        self.attack_train_member_dataloader = None
+        self.attack_train_non_member_dataloader = None
+        self.attack_test_member_dataloader = None
+        self.attack_test_non_member_dataloader = None
+        self.attack_test_dataloader = None
+        self.attack_loss_function = local_data['attack_loss_function']
+        if not hasattr(nn, self.attack_loss_function):
+            error_message = f"...Loss Function: \"{self.attack_loss_function}\" is not supported or cannot be found in " \
+                            f"Torch Optimizers! "
+            logging.error(error_message)
+            raise AttributeError(error_message)
+        else:
+            self.attack_loss_function = nn.__dict__[self.attack_loss_function]()
+        self.attack_optimizer = local_data['attack_optimizer']
 
         # Create Attack model based on the target model.
-        self.attack_model = AttackModel(target_model=self.model)
+        self.attack_model = AttackModel(target_model=self.model, number_of_classes=200)
 
-    def load_attack_data(self, training_data, split_ratio):
+    def load_attack_data(self, training_data, test_data, attack_data_distribution):
         """ Ja hier moet dus documentatie """
-        self.load_data(training_data, split_ratio)
+        logging.debug(' Loading datasets for attacker')
 
-        train_set_size = int(len(training_data) * split_ratio)
-        test_set_size = len(training_data) - train_set_size
-        train_set, test_set = torch.utils.data.random_split(training_data, [train_set_size, test_set_size])
-        member_train_set, non_member_train_set = torch.utils.data.random_split(train_set, [1, 1])
-        member_test_set, non_member_test_set = torch.utils.data.random_split(test_set, [1, 1])
+        # Get the indicis for the right amount of training and test samples.
+        training_member_index = torch.randperm(len(training_data))[:attack_data_distribution[0]]
+        training_non_member_index = torch.randperm(len(test_data))[:attack_data_distribution[1]]
+        test_member_index = torch.randperm(len(training_data))[:attack_data_distribution[2]]
+        test_non_member_index = torch.randperm(len(test_data))[:attack_data_distribution[3]]
 
-        logging.debug(' Loading datasets for attacker and splitting in member and non-member')
+        # Create the subsets of the training data necessary.
+        train_member_set = torch.utils.data.Subset(training_data, training_member_index)
+        train_non_member_set = torch.utils.data.Subset(test_data, training_non_member_index)
+        test_member_set = torch.utils.data.Subset(training_data, test_member_index)
+        test_non_member_set = torch.utils.data.Subset(test_data, test_non_member_index)
 
-        self.member_attack_train_dataloader = DataLoader(member_train_set,
+        # Create data loaders
+        self.attack_train_member_dataloader = DataLoader(train_member_set,
                                                          batch_size=self.batch_size,
                                                          shuffle=True,
                                                          num_workers=2,
                                                          pin_memory=False
                                                          )
-        self.non_member_attack_train_dataloader = DataLoader(non_member_train_set,
+
+        self.attack_train_non_member_dataloader = DataLoader(train_non_member_set,
                                                              batch_size=self.batch_size,
                                                              shuffle=True,
                                                              num_workers=2,
                                                              pin_memory=False
                                                              )
 
-        self.member_attack_test_dataloader = DataLoader(member_test_set,
+        self.attack_test_member_dataloader = DataLoader(test_member_set,
                                                         batch_size=self.batch_size,
                                                         shuffle=True,
                                                         num_workers=2,
                                                         pin_memory=False
                                                         )
-        self.non_member_attack_test_dataloader = DataLoader(non_member_test_set,
+
+        self.attack_test_non_member_dataloader = DataLoader(test_non_member_set,
                                                             batch_size=self.batch_size,
                                                             shuffle=True,
                                                             num_workers=2,
@@ -100,73 +121,117 @@ class Attacker(Client):
 
         logging.debug('loaded attacker data successfully')
 
-    def get_last_layer_outputs(self, features):
-        """ Ja hier moet dus documentatie """
-        self.model.eval()
-        self.model.to(self.device)
-        return self.model(features)
-
-    def get_labels(self, labels):
-        """
-         Returns the labels with one hot encoding.
-         """
-        return one_hot_encoding(labels, self.one_hot_encoding)
-
-    def get_loss(self, features, labels):
-        """
-         Computes the loss for given model on given features and labels.
-         """
-        outputs = self.model(features)
-        return self.loss_function(outputs, labels)
-
-    def get_gradients(self, features, labels):
-        """ Ja hier moet dus documentatie """
-        self.model.train()
-        self.model.to(self.device)
-        predictions = self.model(features)
-        loss = self.loss_function(predictions, labels)
-        loss.backward()
-        result = None
-        for name, param in self.model.named_parameters():
-            if self.attack_model.last_layer_name in name:
-                result = param.grad
-        return result
-
-    def prepare_and_perform_forward_pass(self, features, labels):
-        """
-            Get all the necessary inputs for a forward pass of the attack model and compute the predictions
-        """
-        attack_inputs = []
-        # Gather and Prepare inputs.
-        if self.exploit_last_layer:
-            attack_inputs.append(self.get_last_layer_outputs(features))
-        if self.exploit_label:
-            attack_inputs.append(self.get_labels(labels))
-        if self.exploit_loss:
-            attack_inputs.append(self.get_loss(features, labels))
-        if self.exploit_gradient:
-            attack_inputs.append(self.get_gradients(features, labels))
-        # Return the predictions of the attack model.
-        return self.attack_model(attack_inputs)
-
     def perform_attack(self):
         """ Ja hier moet dus documentatie """
-
         for epoch in range(self.attack_epochs):
             self.train_attack()
             if self.eval_attack > 0 and epoch % self.eval_attack == 0:
                 self.test_attack()
 
-    def train_attack(self):
+    def train_attack(self, round_number):
         """ Ja hier moet dus documentatie """
+        # Set target model in eval mode and to device
+        self.model.eval()
+        self.model.to(self.device)
 
-        self.attack_model.train()
-        self.attack_model.to(self.device)
+        # Set attack optimizer
+        self.attack_optimizer = optimizers.__dict__[self.optimizer_name](
+            params=self.model.parameters(),
+            lr=self.learning_rate,
+            momentum=self.momentum
+        )
 
+        # Perform X number of epochs, each epoch passes the entire dataset once.
         for epoch in range(self.number_of_epochs):
-            losses = 0
+            epoch += 1
 
-            # for batch_id, (data, labels) in enumerate()
+            batch_time = AverageMeter()
+            losses = AverageMeter()
+            start_time = time.time()
+            accuracy = AverageMeter()
+
+            for batch_id, ((member_input, member_target), (non_member_input, non_member_target)) in enumerate(
+                    zip(self.attack_train_member_dataloader
+                        , self.attack_train_non_member_dataloader)):
+                # Set and updates variables
+                attack_inputs = []
+                one_hot_labels = None
+                gradients = torch.zeros(0)
+                # Load data to device
+                member_input, member_target = member_input.float().to(self.device) \
+                    , member_target.long().to(self.device)
+                non_member_input, non_member_target = non_member_input.float().to(self.device) \
+                    , non_member_target.long().to(self.device)
+
+                data, labels = torch.cat((member_input, non_member_input)), torch.cat(
+                    (member_target, non_member_target))
+
+                predictions = self.model(data)
+                if self.exploit_last_layer:
+                    attack_inputs.append(predictions)
+                if self.exploit_label:
+                    one_hot_labels = one_hot_encoding(labels, self.one_hot_encoding)
+                    attack_inputs.append(one_hot_labels.float())
+                if self.exploit_loss:
+                    temp = torch.sum(predictions * one_hot_labels, dim=1).view([-1, 1])
+                    attack_inputs.append(temp)
+                if self.exploit_gradient:
+                    for index in range(predictions.size(0)):
+                        loss = self.loss_function(predictions[index].view([1, -1]), labels[index].view([-1]))
+                        self.optimizer.zero_grad()
+                        if index == (predictions.size(0)) - 1:
+                            loss.backward(retain_graph=False)
+                        else:
+                            loss.backward(retain_graph=True)
+                        current_grads = self.model.classifier.weight.grad.view([1, 1, 256, 200])
+
+                        if gradients.size()[0] == 0:
+                            gradients = current_grads
+                        else:
+                            gradients = torch.cat((gradients, current_grads))
+                    attack_inputs.append(gradients)
+
+                # Get the predictions for the membership classification
+                self.model.to("cpu")
+                self.attack_model.train()
+                self.attack_model.to(self.device)
+
+                # Set all data components to device
+                for component in range(len(attack_inputs)):
+                    attack_inputs[component] = attack_inputs[component].data.float().to(self.device)
+                membership_predictions = self.attack_model(attack_inputs)
+
+                # Change labels of the data for binary attack classification
+                member_target = torch.Tensor([1 for _ in member_target])
+                non_member_target = torch.Tensor([0 for _ in non_member_target])
+                membership_labels = torch.cat((member_target, non_member_target))
+                membership_labels = torch.unsqueeze(membership_labels, -1).data.float().to(self.device)
+
+                # Calculate the loss of attack model
+                attack_loss = self.attack_loss_function(membership_predictions, membership_labels)
+
+                # Measure training accuracy and report metrics
+                acc = np.mean((membership_predictions.data.numpy() > 0.5) == membership_labels.data.numpy())
+                accuracy.update(acc, self.attack_batch_size)
+                losses.update(attack_loss.item(), self.attack_batch_size)
+                batch_time.update(time.time() - start_time)
+
+                # Perform optimizer steps
+                self.attack_optimizer.zero_grad()
+                attack_loss.backward()
+                self.attack_optimizer.step()
+                # Place model back to CPU
+                self.attack_model.to('cpu')
+
+                if batch_id % 10 == 0:
+                    message = f'[ Round: {round_number} ' \
+                              f'| Attacker Train ' \
+                              f'| Batch: {batch_id}/{len(self.attack_train_member_dataloader)} ' \
+                              f'| Time: {batch_time.avg:.2f}s ' \
+                              f'| Loss: {losses.avg:.5f} ' \
+                              f'| TR_ACC: {accuracy.avg:.2f}% ]'
+                    logging.info(message)
+        self.model.to("cpu")
 
     def test_attack(self):
         """ Ja hier moet dus documentatie """
