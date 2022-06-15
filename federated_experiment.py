@@ -13,10 +13,11 @@ if __name__ == '__main__':
     with open('./config.yaml') as c:
         configs = list(yaml.load_all(c, Loader=yaml.FullLoader))
     experiment_config = configs[0]["experiment_config"]
-    data_config = configs[1]["data_settings"]
+    attack_config = configs[1]['attack_settings']
     training_config = configs[2]["training_settings"]
     model_config = configs[3]["model_settings"]
-    log_config = configs[4]["LOG_settings"]
+    data_config = configs[4]["data_settings"]
+    log_config = configs[5]["LOG_settings"]
 
     # read persistent file to create separate log_files
     with open('./log/persistent.txt', 'r', encoding="utf-8") as f:
@@ -54,13 +55,14 @@ if __name__ == '__main__':
 
     # Setup Main Server with given parameters
     main_server = CentralServer(experiment_config,
+                                attack_config,
                                 data_config,
                                 training_config,
                                 model_config
                                 )
     main_server.start_up()
     # Perform main experiment
-    main_server.perform_experiment(start_time)
+    main_server.perform_experiment()
     # Log scalars for tensorboard.
     message = f"[ Total runtime: ... {str(get_duration(start_time))} ]"
     logging.info(message)

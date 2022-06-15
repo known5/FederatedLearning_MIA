@@ -1,13 +1,54 @@
 import logging
 import time
+
+import numpy as np
 import torchvision
 import torchvision.models as models
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torch.utils.data as data_util
+import torch.nn as nn
 import torch
 
 from src.models import TestNet, AlexNet
+
+
+class ConfusionMatrix(object):
+
+    def __init__(self):
+        self.tp = 0
+        self.fn = 0
+        self.fp = 0
+        self.tn = 0
+
+    def reset(self):
+        self.tp = 0
+        self.fn = 0
+        self.fp = 0
+        self.tn = 0
+
+    def update(self, y_pred, y_true):
+        confusion_vector = (torch.round(y_pred) / y_true).float()
+
+        self.tp = torch.sum(confusion_vector == 1.).item()
+        self.fn = torch.sum(confusion_vector == 0.).item()
+        self.fp = torch.sum(confusion_vector == float('inf')).item()
+        self.tn = torch.sum(torch.isnan(confusion_vector)).item()
+
+        return self.tp, self.fn, self.fp, self.tn
+
+    def get_confusion_matrix(self):
+        return self.tp, self.fn, self.fp, self.tn
+
+
+def get_torch_loss_function(loss_function):
+    if not hasattr(nn, loss_function):
+        error_message = f"...Loss Function: \"{loss_function}\" is not supported or cannot be found in " \
+                        f"Torch Optimizers! "
+        logging.error(error_message)
+        raise AttributeError(error_message)
+    else:
+        return nn.__dict__[loss_function]()
 
 
 def get_duration(start_time):

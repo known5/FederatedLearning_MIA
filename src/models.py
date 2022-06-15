@@ -33,7 +33,7 @@ def get_output_shape_of_last_layer(target_model):
 
 def get_last_layer_name(target_model):
     """
-         Gets the output shape of the last layer of a given model
+         Gets the name of the last layer of a given model
     """
     layer_name = None
     for name, param in target_model.named_parameters():
@@ -144,7 +144,8 @@ class AttackModel(nn.Module):
             encoder_inputs.append(temp)
 
         if self.exploit_label:
-            encoder_inputs.append(self.label_component(inputs[1]))
+            temp = self.label_component(inputs[1])
+            encoder_inputs.append(temp)
 
         if self.exploit_loss:
             temp = self.loss_component(inputs[2])
