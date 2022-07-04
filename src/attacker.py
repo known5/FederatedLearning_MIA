@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from collections import Counter
 
@@ -29,9 +30,11 @@ def one_hot_encoding(labels, encoding):
 
 def load_target_model_for_inference(path, target_dir):
     """ Ja hier moet dus documentatie """
-    model = AlexNet()
-    checkpoint = torch.load(path + target_dir)
-    return model.load_state_dict(checkpoint['state_dict'])
+    model = AlexNet(num_classes=200)
+    filepath = os.path.join(target_dir, path)
+    checkpoint = torch.load(filepath)
+    model.load_state_dict(checkpoint['state_dict'])
+    return model
 
 
 class Attacker(Client):
@@ -135,9 +138,8 @@ class Attacker(Client):
             lr=self.learning_rate,
             momentum=self.momentum
         )
-
         # Perform X number of epochs, each epoch passes the entire dataset once.
-        for epoch in range(1, len(self.attack_epochs)):
+        for epoch in range(1, len(self.attack_epochs) + 1):
             # confusion matrix and accuracy metric initialized
             confusion_matrix = torchmetrics.StatScores()
             accuracy = torchmetrics.Accuracy()
@@ -146,7 +148,6 @@ class Attacker(Client):
             batch_time = AverageMeter()
             losses = AverageMeter()
             start_time = time.time()
-
             # perform inference per class for confusion matrix to keep accurate track of scores.
             for data_class in range(self.number_of_classes):
                 member, non_member = self.class_attack_data_subsets[data_class]

@@ -55,8 +55,8 @@ class CentralServer(object):
         self.batch_size = training_param['batch_size']
 
         self.model_param = model_param
-        self.results = {"loss": [], "accuracy": []}
-        self.attack_results = {"loss": [], "accuracy": []}
+        self.results = {"loss": [], "accuracy": [0.0]}
+        self.attack_results = {"loss": [], "accuracy": [0.0]}
 
         self.test_data = None
         self.global_test_dataloader = None
@@ -213,9 +213,9 @@ class CentralServer(object):
             logging.info(message)
             # If checked, do training cycle
             if self.train_model > 0 and index % self.train_model == 0:
-                self.do_training(index)
-                self.aggregate_model()
-                self.share_model_with_clients()
+                # self.do_training(index)
+                # self.aggregate_model()
+                # self.share_model_with_clients()
                 # If checked, perform global model evaluation every round.
                 if self.do_global_eval > 0 and index % self.do_global_eval == 0:
                     round_loss, round_accuracy = self.test_global_model(index)
@@ -224,6 +224,7 @@ class CentralServer(object):
                 # If checked, save the current model and optimizer state
                 if self.save_model > 0 and index % self.save_model == 0:
                     is_best = round_accuracy > max(self.results['accuracy'])
+                    is_best = True
                     if is_best:
                         save_checkpoint({
                             'epoch': index,
