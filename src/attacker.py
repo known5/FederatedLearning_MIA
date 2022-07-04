@@ -1,19 +1,17 @@
 import logging
 import os
 import time
-from collections import Counter
 
 import numpy as np
 import torch
-import torch.utils
 import torch.nn.functional as f
 import torch.optim as optimizers
-import torchmetrics
+import torch.utils
 from torch.utils.data import DataLoader
 
 from src.models import AttackModel, get_output_shape_of_last_layer, AlexNet
-from .client import Client
 from src.utils import AverageMeter, get_torch_loss_function, ConfusionMatrix
+from .client import Client
 
 
 def create_ohe(model):
@@ -141,10 +139,8 @@ class Attacker(Client):
         # Perform X number of epochs, each epoch passes the entire dataset once.
         for epoch in range(1, len(self.attack_epochs) + 1):
             # confusion matrix and accuracy metric initialized
-            confusion_matrix = torchmetrics.StatScores()
-            accuracy = torchmetrics.Accuracy()
-
-            #
+            confusion_matrix = ConfusionMatrix()
+            accuracy = AverageMeter()
             batch_time = AverageMeter()
             losses = AverageMeter()
             start_time = time.time()
@@ -225,10 +221,9 @@ class Attacker(Client):
                     attack_loss = self.attack_loss_function(membership_predictions, membership_labels)
 
                     # Measure training accuracy and report metrics
-                    print(membership_predictions)
-                    print(membership_labels)
-                    accuracy(membership_predictions, membership_labels.data.int())
-                    confusion_matrix(membership_predictions, membership_labels.data.int())
+                    acc = np.mean((membership_predictions.data.numpy() > 0.5) == membership_labels.data.numpy()) * 100
+                    confusion_matrix.update(membership_predictions, membership_labels)
+                    accuracy.update(acc, self.attack_batch_size)
                     losses.update(attack_loss.item(), self.attack_batch_size)
                     batch_time.update(time.time() - start_time)
 
@@ -239,18 +234,17 @@ class Attacker(Client):
                     # Place model back to CPU
                     self.attack_model.to('cpu')
 
-                    matrix = confusion_matrix.compute()
-                    print(matrix)
+                    temp = confusion_matrix.get_confusion_matrix()
                     message = f'[ Round: {round_number} ' \
                               f'| Attacker Train ' \
-                              f'| Class: {data_class} ' \
+                              f'| Class: {data_class}' \
                               f'| Time: {batch_time.avg:.2f}s ' \
                               f'| Loss: {losses.avg:.5f} ' \
-                              f'| Acc: {accuracy.compute():.2f}%' \
-                        # f'| Conf Matrix: TP:{confusion_matrix.data[0]}' \
-                    # f' FP:{confusion_matrix.data[1]}' \
-                    # f' TN:{confusion_matrix.data[2]}' \
-                    # f' FN:{confusion_matrix.data[3]} ]'
+                              f'| Acc: {accuracy.avg:.2f}% ]' \
+                              f'| Conf Matrix: TP:{temp[0]}' \
+                              f' FP:{temp[1]}' \
+                              f' TN:{temp[2]}' \
+                              f' FN:{temp[3]} ]'
                     logging.info(message)
         self.model.to("cpu")
 
