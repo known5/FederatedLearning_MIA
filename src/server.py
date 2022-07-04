@@ -42,6 +42,7 @@ class CentralServer(object):
         self.attack_param = attack_param
         self.do_passive_attack = attack_param['passive_attack']
         self.save_attack_model = attack_param['save_attack_model']
+        self.load_target_models = attack_param['load_target_models']
 
         self.dataset_path = data_param['data_path']
         self.dataset_name = data_param['dataset_name']
@@ -87,7 +88,9 @@ class CentralServer(object):
                                         training_param,
                                         attack_param,
                                         device=self.device,
-                                        target_train_model=copy.deepcopy(self.model)
+                                        target_train_model=copy.deepcopy(self.model),
+                                        target_path=self.model_path,
+                                        load_models=self.load_target_models
                                         )
                                )
                 attacker_is_generated = True
@@ -213,14 +216,13 @@ class CentralServer(object):
                 self.do_training(index)
                 self.aggregate_model()
                 self.share_model_with_clients()
-
                 # If checked, perform global model evaluation every round.
                 if self.do_global_eval > 0 and index % self.do_global_eval == 0:
                     round_loss, round_accuracy = self.test_global_model(index)
                     self.results['loss'].append(round_loss)
                     self.results['accuracy'].append(round_accuracy)
                 # If checked, save the current model and optimizer state
-                if self.save_model > 1 and index % self.save_model == 0:
+                if self.save_model > 0 and index % self.save_model == 0:
                     is_best = round_accuracy > max(self.results['accuracy'])
                     if is_best:
                         save_checkpoint({
@@ -234,10 +236,10 @@ class CentralServer(object):
                         )
 
             # If checked, perform MIA during each round.
-            if self.do_passive_attack and index % self.do_passive_attack == 0:
-                attacker.perform_attack(index)
+            if self.do_passive_attack > 0 and index % self.do_passive_attack == 0:
+                attacker.perform_attack()
 
-                if self.save_attack_model > 1 and index % self.save_attack_model == 0:
+                if self.save_attack_model > 0 and index % self.save_attack_model == 0:
                     is_best = round_accuracy > max(self.attack_results['accuracy'])
                     if is_best:
                         save_checkpoint_adversary({
