@@ -4,15 +4,14 @@ import time
 
 import numpy as np
 import torch
-import torch.utils
 import torch.nn.functional as f
 import torch.optim as optimizers
-import torchmetrics
+import torch.utils
 from torch.utils.data import DataLoader
 
 from src.models import AttackModel, get_output_shape_of_last_layer, AlexNet
-from .client import Client
 from src.utils import AverageMeter, get_torch_loss_function, ConfusionMatrix
+from .client import Client
 
 
 def create_ohe(model):
@@ -42,9 +41,12 @@ class Attacker(Client):
         """
          Attacker class for membership inference attack.
          Based on the KERAS implementation of the paper by Naser et al.
+
          Paper link: https://arxiv.org/abs/1812.00910
+
          Implementation link: https://github.com/SPIN-UMass/MembershipWhiteboxAttacks/tree
          /fed4a30107393b42f955ca399c7d0df162e73eb3
+
          """
         super().__init__(client_id, local_data, device, target_train_model)
         # To exploit layers
@@ -73,7 +75,12 @@ class Attacker(Client):
         self.number_of_classes = 100
 
         # Create Attack model based on the target model.
-        self.attack_model = AttackModel(target_model=self.model, number_of_classes=self.number_of_classes)
+        self.attack_model = AttackModel(target_model=self.model,
+                                        number_of_classes=self.number_of_classes,
+                                        exploit_last_layer=self.exploit_last_layer,
+                                        exploit_label=self.exploit_label,
+                                        exploit_loss=self.exploit_loss,
+                                        exploit_gradient=self.exploit_gradient)
 
     def load_attack_data(self, training_data, test_data):
         """ Ja hier moet dus documentatie """
@@ -118,9 +125,9 @@ class Attacker(Client):
                 path = f'epoch_{epoch_number}_main_clients_1'
                 self.model = load_target_model_for_inference(path, self.target_path)
 
-            self.train_attack(epoch)
+            self.train_attack(epoch + 1)
             if self.eval_attack > 0 and epoch % self.eval_attack == 0:
-                self.test_attack(epoch)
+                self.test_attack(epoch + 1)
 
     def train_attack(self, round_number):
         """ Ja hier moet dus documentatie """
@@ -141,9 +148,9 @@ class Attacker(Client):
             accuracy = AverageMeter()
             batch_time = AverageMeter()
             losses = AverageMeter()
-            start_time = time.time()
             # perform inference per class for confusion matrix to keep accurate track of scores.
             for data_class in range(self.number_of_classes):
+                confusion_matrix.reset()
                 member, non_member = self.class_attack_data_subsets[data_class]
                 temp_data_loader = DataLoader(member,
                                               batch_size=self.attack_batch_size,
@@ -165,6 +172,7 @@ class Attacker(Client):
                     attack_inputs = []
                     one_hot_labels = None
                     gradients = torch.zeros(0)
+                    start_time = time.time()
                     # Load data to device
                     member_input, member_target = member_input.float().to(self.device) \
                         , member_target.long().to(self.device)
@@ -174,6 +182,7 @@ class Attacker(Client):
                     data, labels = torch.cat((member_input, non_member_input)), torch.cat(
                         (member_target, non_member_target))
 
+                    self.model.to(self.device)
                     predictions = self.model(data)
                     if self.exploit_last_layer:
                         attack_inputs.append(predictions)
@@ -232,18 +241,18 @@ class Attacker(Client):
                     # Place model back to CPU
                     self.attack_model.to('cpu')
 
-                    temp = confusion_matrix.get_confusion_matrix()
-                    message = f'[ Round: {round_number} ' \
-                              f'| Attacker Train ' \
-                              f'| Class: {data_class} ' \
-                              f'| Time: {batch_time.avg:.2f}s ' \
-                              f'| Loss: {losses.avg:.5f} ' \
-                              f'| Acc: {accuracy.compute():.2f}%' \
-                        # f'| Conf Matrix: TP:{confusion_matrix.data[0]}' \
-                    # f' FP:{confusion_matrix.data[1]}' \
-                    # f' TN:{confusion_matrix.data[2]}' \
-                    # f' FN:{confusion_matrix.data[3]} ]'
-                    logging.info(message)
+                temp = confusion_matrix.get_confusion_matrix()
+                message = f'[ Round: {round_number} ' \
+                          f'| Attacker Train ' \
+                          f'| Class: {data_class}' \
+                          f'| Time: {batch_time.avg:.2f}s ' \
+                          f'| Loss: {losses.avg:.5f} ' \
+                          f'| Acc: {accuracy.avg:.2f}% ]' \
+                          f'| Conf Matrix: TP:{temp[0]}' \
+                          f' FP:{temp[1]}' \
+                          f' TN:{temp[2]}' \
+                          f' FN:{temp[3]} ]'
+                logging.info(message)
         self.model.to("cpu")
 
     def test_attack(self, round_number):
@@ -329,16 +338,16 @@ class Attacker(Client):
 
                     self.attack_model.to('cpu')
 
-                    temp = confusion_matrix.get_confusion_matrix()
-                    message = f'[ Round: {round_number} ' \
-                              f'| Attacker Test ' \
-                              f'| Class: {data_class}' \
-                              f'| Time: {batch_time.avg:.2f}s ' \
-                              f'| Loss: {losses.avg:.5f} ' \
-                              f'| Acc: {accuracy.avg:.2f}% ]' \
-                              f'| Conf Matrix: TP:{temp[0]}' \
-                              f' FN:{temp[1]}' \
-                              f' FP:{temp[2]}' \
-                              f' TN:{temp[3]} ]'
-                    logging.info(message)
+                temp = confusion_matrix.get_confusion_matrix()
+                message = f'[ Round: {round_number} ' \
+                          f'| Attacker Test ' \
+                          f'| Class: {data_class}' \
+                          f'| Time: {batch_time.avg:.2f}s ' \
+                          f'| Loss: {losses.avg:.5f} ' \
+                          f'| Acc: {accuracy.avg:.2f}% ]' \
+                          f'| Conf Matrix: TP:{temp[0]}' \
+                          f' FP:{temp[1]}' \
+                          f' TN:{temp[2]}' \
+                          f' FN:{temp[3]} ]'
+                logging.info(message)
         self.model.to("cpu")

@@ -1,5 +1,5 @@
-import torch.nn as nn
 import torch
+import torch.nn as nn
 
 """ Ja hier moet dus documentatie """
 
@@ -95,9 +95,9 @@ class AttackModel(nn.Module):
     """ Ja hier moet dus documentatie """
 
     def __init__(self, target_model,
-                 exploit_last_layer=True,
-                 exploit_label=True,
-                 exploit_loss=True,
+                 exploit_last_layer=False,
+                 exploit_label=False,
+                 exploit_loss=False,
                  exploit_gradient=False,
                  number_of_classes=100
                  ):
