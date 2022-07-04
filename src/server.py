@@ -224,7 +224,6 @@ class CentralServer(object):
                 # If checked, save the current model and optimizer state
                 if self.save_model > 0 and index % self.save_model == 0:
                     is_best = round_accuracy > max(self.results['accuracy'])
-                    is_best = True
                     if is_best:
                         save_checkpoint({
                             'epoch': index,
@@ -232,7 +231,7 @@ class CentralServer(object):
                             'acc': round_accuracy,
                             'best_acc': is_best
                         }, is_best=is_best,
-                            filename=f'epoch_{index}_main',
+                            filename=f'epoch_{index}_main_clients_{self.number_of_clients}',
                             checkpoint=self.model_path
                         )
 
@@ -250,7 +249,7 @@ class CentralServer(object):
                             'best_acc': is_best,
                             'optimizer': attacker.attack_optimizer.state.dict()
                         }, is_best=is_best,
-                            filename=f'epoch_{index}_attack',
+                            filename=f'epoch_{index}_attack_clients_{self.number_of_clients}',
                             checkpoint=self.model_path
                         )
 

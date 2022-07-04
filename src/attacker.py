@@ -1,7 +1,6 @@
 import logging
 import os
 import time
-from collections import Counter
 
 import numpy as np
 import torch
@@ -22,15 +21,15 @@ def create_ohe(model):
     return f.one_hot(input=torch.arange(0, output_size), num_classes=output_size)
 
 
-def one_hot_encoding(labels, encoding):
+def one_hot_encoding(labels, encoding, device):
     """ Ja hier moet dus documentatie """
-    labels = labels.type(torch.int64).numpy()
-    return torch.stack(list(map(lambda x: encoding[x], labels)))
+    labels = labels.type(torch.int64).cpu().numpy()
+    return torch.stack(list(map(lambda x: encoding[x], labels))).to(device)
 
 
 def load_target_model_for_inference(path, target_dir):
     """ Ja hier moet dus documentatie """
-    model = AlexNet(num_classes=200)
+    model = AlexNet()
     filepath = os.path.join(target_dir, path)
     checkpoint = torch.load(filepath)
     model.load_state_dict(checkpoint['state_dict'])
@@ -116,7 +115,7 @@ class Attacker(Client):
         for epoch in range(len(self.attack_epochs)):
             epoch_number = self.attack_epochs[epoch]
             if self.load_target_model > 0:
-                path = f'epoch_{epoch_number}_main'
+                path = f'epoch_{epoch_number}_main_clients_1'
                 self.model = load_target_model_for_inference(path, self.target_path)
 
             self.train_attack(epoch)
@@ -138,10 +137,8 @@ class Attacker(Client):
         # Perform X number of epochs, each epoch passes the entire dataset once.
         for epoch in range(1, len(self.attack_epochs) + 1):
             # confusion matrix and accuracy metric initialized
-            confusion_matrix = torchmetrics.StatScores()
-            accuracy = torchmetrics.Accuracy()
-
-            #
+            confusion_matrix = ConfusionMatrix()
+            accuracy = AverageMeter()
             batch_time = AverageMeter()
             losses = AverageMeter()
             start_time = time.time()
@@ -181,7 +178,7 @@ class Attacker(Client):
                     if self.exploit_last_layer:
                         attack_inputs.append(predictions)
                     if self.exploit_label:
-                        one_hot_labels = one_hot_encoding(labels, self.one_hot_encoding)
+                        one_hot_labels = one_hot_encoding(labels, self.one_hot_encoding, self.device)
                         attack_inputs.append(one_hot_labels.float())
                     if self.exploit_loss:
                         temp = torch.sum(predictions * one_hot_labels, dim=1).view([-1, 1])
@@ -221,11 +218,11 @@ class Attacker(Client):
                     # Calculate the loss of attack model
                     attack_loss = self.attack_loss_function(membership_predictions, membership_labels)
 
-                    # Measure training accuracy and report metrics
-                    print(membership_predictions)
-                    print(membership_labels)
-                    accuracy(membership_predictions, membership_labels.data.int())
-                    confusion_matrix(membership_predictions, membership_labels.data.int())
+                    # Measure training accuracy and report metric
+                    acc = np.mean(
+                        (membership_predictions.data.cpu().numpy() > 0.5) == membership_labels.data.cpu().numpy()) * 100
+                    confusion_matrix.update(membership_predictions, membership_labels)
+                    accuracy.update(acc, self.attack_batch_size)
                     losses.update(attack_loss.item(), self.attack_batch_size)
                     batch_time.update(time.time() - start_time)
 
@@ -236,18 +233,17 @@ class Attacker(Client):
                     # Place model back to CPU
                     self.attack_model.to('cpu')
 
-                    matrix = confusion_matrix.compute()
-                    print(matrix)
+                    temp = confusion_matrix.get_confusion_matrix()
                     message = f'[ Round: {round_number} ' \
                               f'| Attacker Train ' \
                               f'| Class: {data_class} ' \
                               f'| Time: {batch_time.avg:.2f}s ' \
                               f'| Loss: {losses.avg:.5f} ' \
-                              f'| Acc: {accuracy.compute():.2f}%' \
-                        # f'| Conf Matrix: TP:{confusion_matrix.data[0]}' \
-                    # f' FP:{confusion_matrix.data[1]}' \
-                    # f' TN:{confusion_matrix.data[2]}' \
-                    # f' FN:{confusion_matrix.data[3]} ]'
+                              f'| Acc: {accuracy.avg():.2f}%' \
+                              f'| Conf Matrix: TP:{temp[0]}' \
+                              f' FP:{temp[1]}' \
+                              f' TN:{temp[2]}' \
+                              f' FN:{temp[3]} ]'
                     logging.info(message)
         self.model.to("cpu")
 
@@ -285,7 +281,7 @@ class Attacker(Client):
                     if self.exploit_last_layer:
                         attack_inputs.append(predictions)
                     if self.exploit_label:
-                        one_hot_labels = one_hot_encoding(labels, self.one_hot_encoding)
+                        one_hot_labels = one_hot_encoding(labels, self.one_hot_encoding, self.device)
                         attack_inputs.append(one_hot_labels.float())
                     if self.exploit_loss:
                         temp = torch.sum(predictions * one_hot_labels, dim=1).view([-1, 1])

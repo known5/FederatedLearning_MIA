@@ -5,14 +5,14 @@ experiment_config:
   local_eval: 0
   global_eval: 0
   save_model: 0
-  model_path: './models/target_clients_5/'
+  model_path: './models/target_clients_1/'
 ---
 attack_settings:
   passive_attack: 1
   load_target_models : 1
   eval_attack: 0
   save_attack_model: 0
-  attack_epochs: [1]
+  attack_epochs: [5]
   attack_batch_size: 25
   attack_loss_function: 'MSELoss'
   attack_optimizer: 'Adam'
@@ -40,7 +40,7 @@ model_settings:
 ---
 data_settings:
   data_path: "./data/"
-  dataset_name: "tiny-imagenet-200"
+  dataset_name: "tiny-imagenet-100"
   iid: False
 ---
 LOG_settings:
