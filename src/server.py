@@ -236,7 +236,7 @@ class CentralServer(object):
                             'acc': round_accuracy,
                             'best_acc': is_best
                         }, is_best=is_best,
-                            filename=f'epoch_{index}_main_clients:{self.number_of_clients}',
+                            filename=f'epoch_{index}_main_clients_{self.number_of_clients}',
                             checkpoint=self.model_path
                         )
                     self.results['loss'].append(round_loss)

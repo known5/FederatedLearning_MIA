@@ -62,7 +62,7 @@ class Attacker(Client):
         self.attack_test_non_member_dataloader = None
 
         # Create Attack model based on the target model.
-        self.attack_model = AttackModel(target_model=self.model, number_of_classes=200)
+        self.attack_model = AttackModel(target_model=self.model, number_of_classes=100)
 
     def load_attack_data(self, training_data, test_data):
         """ Ja hier moet dus documentatie """
@@ -133,7 +133,6 @@ class Attacker(Client):
             momentum=self.momentum
         )
 
-
         data_size = len(self.attack_train_member_dataloader)
 
         # Perform X number of epochs, each epoch passes the entire dataset once.
@@ -203,7 +202,8 @@ class Attacker(Client):
                 attack_loss = self.attack_loss_function(membership_predictions, membership_labels)
 
                 # Measure training accuracy and report metrics
-                acc = np.mean((membership_predictions.data.cpu().numpy() > 0.5) == membership_labels.data.cpu().numpy()) * 100
+                acc = np.mean(
+                    (membership_predictions.data.cpu().numpy() > 0.5) == membership_labels.data.cpu().numpy()) * 100
                 confusion_matrix.update(membership_predictions, membership_labels)
                 accuracy.update(acc, self.attack_batch_size)
                 losses.update(attack_loss.item(), self.attack_batch_size)
@@ -238,7 +238,7 @@ class Attacker(Client):
         self.model.to(self.device)
 
         # Perform X number of epochs, each epoch passes the entire dataset once.
-        for epoch in range(1 , self.attack_epochs + 1):
+        for epoch in range(1, self.attack_epochs + 1):
 
             confusion_matrix = ConfusionMatrix()
             batch_time = AverageMeter()
@@ -304,7 +304,8 @@ class Attacker(Client):
                 attack_loss = self.attack_loss_function(membership_predictions, membership_labels)
 
                 # Measure training accuracy and report metrics
-                acc = np.mean((membership_predictions.data.cpu().numpy() > 0.5) == membership_labels.data.cpu().numpy()) * 100
+                acc = np.mean(
+                    (membership_predictions.data.cpu().numpy() > 0.5) == membership_labels.data.cpu().numpy()) * 100
                 confusion_matrix.update(membership_predictions, membership_labels)
                 accuracy.update(acc, self.attack_batch_size)
                 losses.update(attack_loss.item(), self.attack_batch_size)

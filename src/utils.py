@@ -1,7 +1,6 @@
 import logging
 import time
 
-import numpy as np
 import torchvision
 import torchvision.models as models
 import torchvision.transforms as transforms

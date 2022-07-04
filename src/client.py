@@ -11,6 +11,7 @@ class Client(object):
 
     def __init__(self, client_id, training_param, device, model):
         """ Ja hier moet dus documentatie """
+        self.test_dataloader = None
         self.__model = None
         self.loss_function = get_torch_loss_function(training_param['loss_function'])
         self.number_of_epochs = training_param['epochs']
@@ -26,7 +27,6 @@ class Client(object):
         self.training_data = None
         self.test_data = None
         self.training_dataloader = None
-        self.testing_dataloader = None
         self.optimizer = optimizers.__dict__[self.optimizer_name](
             params=self.model.parameters(),
             lr=self.learning_rate,
@@ -44,15 +44,23 @@ class Client(object):
         """ Ja hier moet dus documentatie """
         self.__model = model
 
-    def load_data(self, training_data):
+    def load_data(self, training_data, test_data):
         """ Ja hier moet dus documentatie """
         self.training_data = training_data
+        self.test_data = test_data
         self.training_dataloader = DataLoader(self.training_data,
                                               batch_size=self.batch_size,
                                               shuffle=True,
                                               num_workers=2,
                                               pin_memory=False
                                               )
+
+        self.test_dataloader = DataLoader(self.test_data,
+                                          batch_size=self.batch_size,
+                                          shuffle=True,
+                                          num_workers=2,
+                                          pin_memory=False
+                                          )
 
         message = f'Client {self.client_id} loaded datasets successfully'
         logging.debug(message)
@@ -114,7 +122,7 @@ class Client(object):
         self.model.eval()
         self.model.to(self.device)
 
-        data_size = len(self.training_dataloader.dataset)
+        data_size = len(self.test_dataloader.dataset)
 
         losses = AverageMeter()
         correct = 0
@@ -122,7 +130,7 @@ class Client(object):
 
         with torch.no_grad():
             start_time = time.time()
-            for data, labels in self.training_dataloader:
+            for data, labels in self.test_dataloader:
                 # Transfer data to CPU or GPU.
                 data, labels = data.float().to(self.device), labels.long().to(self.device)
 
