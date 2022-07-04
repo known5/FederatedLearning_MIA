@@ -4,14 +4,15 @@ import time
 
 import numpy as np
 import torch
+import torch.utils
 import torch.nn.functional as f
 import torch.optim as optimizers
-import torch.utils
+import torchmetrics
 from torch.utils.data import DataLoader
 
 from src.models import AttackModel, get_output_shape_of_last_layer, AlexNet
-from src.utils import AverageMeter, get_torch_loss_function, ConfusionMatrix
 from .client import Client
+from src.utils import AverageMeter, get_torch_loss_function, ConfusionMatrix
 
 
 def create_ohe(model):
@@ -41,12 +42,9 @@ class Attacker(Client):
         """
          Attacker class for membership inference attack.
          Based on the KERAS implementation of the paper by Naser et al.
-
          Paper link: https://arxiv.org/abs/1812.00910
-
          Implementation link: https://github.com/SPIN-UMass/MembershipWhiteboxAttacks/tree
          /fed4a30107393b42f955ca399c7d0df162e73eb3
-
          """
         super().__init__(client_id, local_data, device, target_train_model)
         # To exploit layers
@@ -224,10 +222,6 @@ class Attacker(Client):
                     acc = np.mean((membership_predictions.data.cpu().numpy() > 0.5) == membership_labels.data.cpu().numpy()) * 100
                     confusion_matrix.update(membership_predictions, membership_labels)
                     accuracy.update(acc, self.attack_batch_size)
-                    # Measure training accuracy and report metrics
-                    acc = np.mean((membership_predictions.data.numpy() > 0.5) == membership_labels.data.numpy()) * 100
-                    confusion_matrix.update(membership_predictions, membership_labels)
-                    accuracy.update(acc, self.attack_batch_size)
                     losses.update(attack_loss.item(), self.attack_batch_size)
                     batch_time.update(time.time() - start_time)
 
@@ -241,14 +235,14 @@ class Attacker(Client):
                     temp = confusion_matrix.get_confusion_matrix()
                     message = f'[ Round: {round_number} ' \
                               f'| Attacker Train ' \
-                              f'| Class: {data_class}' \
+                              f'| Class: {data_class} ' \
                               f'| Time: {batch_time.avg:.2f}s ' \
                               f'| Loss: {losses.avg:.5f} ' \
-                              f'| Acc: {accuracy.avg:.2f}% ]' \
-                              f'| Conf Matrix: TP:{temp[0]}' \
-                              f' FP:{temp[1]}' \
-                              f' TN:{temp[2]}' \
-                              f' FN:{temp[3]} ]'
+                              f'| Acc: {accuracy.compute():.2f}%' \
+                        # f'| Conf Matrix: TP:{confusion_matrix.data[0]}' \
+                    # f' FP:{confusion_matrix.data[1]}' \
+                    # f' TN:{confusion_matrix.data[2]}' \
+                    # f' FN:{confusion_matrix.data[3]} ]'
                     logging.info(message)
         self.model.to("cpu")
 

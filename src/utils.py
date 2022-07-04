@@ -1,30 +1,30 @@
 import logging
 import time
 
-import torch
-import torch.nn as nn
-import torch.utils.data as data_util
 import torchvision
-import torchvision.datasets as datasets
 import torchvision.models as models
 import torchvision.transforms as transforms
+import torchvision.datasets as datasets
+import torch.utils.data as data_util
+import torch.nn as nn
+import torch
 
-from src.models import AlexNet
+from src.models import TestNet, AlexNet
 
 
 class ConfusionMatrix(object):
 
     def __init__(self):
         self.tp = 0
+        self.fn = 0
         self.fp = 0
         self.tn = 0
-        self.fn = 0
 
     def reset(self):
         self.tp = 0
+        self.fn = 0
         self.fp = 0
         self.tn = 0
-        self.fn = 0
 
     def update(self, y_pred, y_true):
         confusion_vector = (torch.round(y_pred) / y_true).float()
@@ -34,8 +34,10 @@ class ConfusionMatrix(object):
         self.fp = torch.sum(confusion_vector == float('inf')).item()
         self.tn = torch.sum(torch.isnan(confusion_vector)).item()
 
+        return self.tp, self.fn, self.fp, self.tn
+
     def get_confusion_matrix(self):
-        return self.tp, self.fp, self.tn, self.fn
+        return self.tp, self.fn, self.fp, self.tn
 
 
 def get_torch_loss_function(loss_function):
@@ -57,7 +59,7 @@ def get_duration(start_time):
 def load_model(model_name, is_local_model):
     """ Ja hier moet dus documentatie """
     if is_local_model:
-        model = AlexNet(num_classes=200)
+        model = AlexNet()
     else:
         if not hasattr(models, model_name):
             error_message = f"...model \"{model_name}\" is not supported or cannot be found in TorchVision models!"
@@ -97,7 +99,7 @@ def load_dataset(data_path, data_name):
     """ Ja hier moet dus documentatie """
     logging.debug('Loading datasets..')
 
-    if data_name == 'tiny-imagenet-200':
+    if data_name == 'tiny-imagenet-100':
         transform_train = transforms.Compose([
             transforms.Resize((32, 32)),
             transforms.ToTensor(),
