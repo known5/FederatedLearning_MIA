@@ -81,7 +81,6 @@ class Attacker(Client):
         logging.debug(' Loading datasets for attacker')
         # Get distributions for attack data from server.
         distribution = self.attack_data_distribution
-        batch_size = self.attack_batch_size
 
         # Get the indicis for the right amount of training and test samples.
         self.class_attack_data_subsets = []
