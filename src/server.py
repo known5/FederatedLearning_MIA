@@ -15,6 +15,7 @@ def save_checkpoint(state, is_best, checkpoint='checkpoint', filename='checkpoin
     filepath = os.path.join(checkpoint, filename)
     torch.save(state, filepath)
     if is_best:
+        print('found best!')
         shutil.copyfile(filepath, os.path.join(checkpoint, 'model_best.pth.tar'))
 
 
@@ -42,7 +43,6 @@ class CentralServer(object):
         self.attack_param = attack_param
         self.do_passive_attack = attack_param['passive_attack']
         self.save_attack_model = attack_param['save_attack_model']
-        self.load_target_models = attack_param['load_target_models']
 
         self.dataset_path = data_param['data_path']
         self.dataset_name = data_param['dataset_name']
@@ -55,8 +55,8 @@ class CentralServer(object):
         self.batch_size = training_param['batch_size']
 
         self.model_param = model_param
-        self.results = {"loss": [], "accuracy": []}
-        self.attack_results = {"loss": [], "accuracy": []}
+        self.results = {"loss": [0.0], "accuracy": [0.0]}
+        self.attack_results = {"loss": [0.0], "accuracy": [0.0]}
 
         self.test_data = None
         self.global_test_dataloader = None
@@ -88,9 +88,7 @@ class CentralServer(object):
                                         training_param,
                                         attack_param,
                                         device=self.device,
-                                        target_train_model=copy.deepcopy(self.model),
-                                        target_path=self.model_path,
-                                        load_models=self.load_target_models
+                                        target_train_model=copy.deepcopy(self.model)
                                         )
                                )
                 attacker_is_generated = True
@@ -111,9 +109,9 @@ class CentralServer(object):
         training_data, test_data = load_dataset(data_path, data_name)
         self.global_test_dataloader = DataLoader(test_data,
                                                  batch_size=self.batch_size,
-                                                 shuffle=False,
+                                                 shuffle=True,
                                                  num_workers=2,
-                                                 pin_memory=True
+                                                 pin_memory=False
                                                  )
 
         # randomly split training data so each client has its own data set.
@@ -128,7 +126,7 @@ class CentralServer(object):
 
         # send data to clients for training.
         for k, client in enumerate(self.clients):
-            client.load_data(training_data_split[k])
+            client.load_data(training_data_split[k], test_data)
         message = 'Distributed data among clients'
         logging.debug(message)
 
@@ -141,6 +139,15 @@ class CentralServer(object):
         for client in self.clients:
             client.model = copy.deepcopy(self.model)
         message = 'Shared model with clients...'
+        logging.debug(message)
+
+    def adjust_learning_rate(self):
+        """ Ja hier moet dus documentatie """
+        for client in self.clients:
+            for param_group in client.optimizer.param_groups:
+                param_group['lr'] *= 0.1
+
+        message = 'Adjusted the learning rate for all clients.'
         logging.debug(message)
 
     def aggregate_model(self):
@@ -169,14 +176,14 @@ class CentralServer(object):
 
         batch_time = AverageMeter()
         losses = AverageMeter()
-        accuracy = AverageMeter()
 
         correct = 0
-        total = 0
 
         start_time = time.time()
         message = f'[ Round: {round_number} | Global Model Eval started ]'
         logging.info(message)
+
+        data_size = len(self.global_test_dataloader.dataset)
 
         with torch.no_grad():
             for batch_idx, (data, labels) in enumerate(self.global_test_dataloader):
@@ -184,24 +191,22 @@ class CentralServer(object):
                 outputs = self.model(data)
                 loss = self.loss_function(outputs, labels)
 
-                _, predicted = torch.max(outputs.data, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
+                predicted = outputs.argmax(dim=1, keepdim=True)
+                correct += predicted.eq(labels.view_as(predicted)).sum().item()
 
                 # Update loss, accuracy and run_time metrics
                 losses.update(loss.item())
-                accuracy.update(correct, self.batch_size)
                 batch_time.update(time.time() - start_time)
 
             # Create and log message about training
             message = f'[ Round: {round_number} ' \
                       f'| Time: {batch_time.avg:.2f}s ' \
                       f'| Loss: {losses.avg:.5f}' \
-                      f'| Accuracy: ({correct}/{total})={(100 * correct / total):.2f}% ]'
+                      f'| Te_Acc: ({correct}/{data_size})={((correct / data_size) * 100):.2f}% ]'
             logging.info(message)
         self.model.to("cpu")
 
-        return losses.avg, accuracy.avg
+        return losses.avg, ((correct / data_size) * 100)
 
     def perform_experiment(self):
         """ Ja hier moet dus documentatie """
@@ -216,28 +221,30 @@ class CentralServer(object):
                 self.do_training(index)
                 self.aggregate_model()
                 self.share_model_with_clients()
+                # Adjust learning rate accordingly.
+                if index == 50 or index == 100:
+                    self.adjust_learning_rate()
                 # If checked, perform global model evaluation every round.
                 if self.do_global_eval > 0 and index % self.do_global_eval == 0:
                     round_loss, round_accuracy = self.test_global_model(index)
-                    self.results['loss'].append(round_loss)
-                    self.results['accuracy'].append(round_accuracy)
-                # If checked, save the current model and optimizer state
-                if self.save_model > 0 and index % self.save_model == 0:
-                    is_best = round_accuracy > max(self.results['accuracy'])
-                    if is_best:
+                    # If checked, save the current model and optimizer state
+                    if self.save_model > 0 and index % self.save_model == 0:
+                        is_best = round_accuracy > max(self.results['accuracy'])
                         save_checkpoint({
                             'epoch': index,
                             'state_dict': self.model.state_dict(),
                             'acc': round_accuracy,
                             'best_acc': is_best
                         }, is_best=is_best,
-                            filename=f'epoch_{index}_main',
+                            filename=f'epoch_{index}_main_clients:{self.number_of_clients}',
                             checkpoint=self.model_path
                         )
+                    self.results['loss'].append(round_loss)
+                    self.results['accuracy'].append(round_accuracy)
 
             # If checked, perform MIA during each round.
-            if self.do_passive_attack > 0 and index % self.do_passive_attack == 0:
-                attacker.perform_attack()
+            if self.do_passive_attack and index % self.do_passive_attack == 0:
+                attacker.perform_attack(index)
 
                 if self.save_attack_model > 0 and index % self.save_attack_model == 0:
                     is_best = round_accuracy > max(self.attack_results['accuracy'])

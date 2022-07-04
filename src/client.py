@@ -5,7 +5,6 @@ import torch.utils
 import torch.optim as optimizers
 from torch.utils.data import DataLoader
 from src.utils import AverageMeter, get_torch_loss_function
-import torchmetrics
 
 
 class Client(object):
@@ -19,7 +18,6 @@ class Client(object):
         self.optimizer_name = training_param['optimizer']
         self.learning_rate = training_param['learning_rate']
         self.momentum = training_param['momentum']
-        self.weight_decay = training_param['weight_decay']
 
         self.batch_size = training_param['batch_size']
         self.client_id = client_id
@@ -32,8 +30,7 @@ class Client(object):
         self.optimizer = optimizers.__dict__[self.optimizer_name](
             params=self.model.parameters(),
             lr=self.learning_rate,
-            momentum=self.momentum,
-            weight_decay=self.weight_decay
+            momentum=self.momentum
         )
         self.local_results = {"loss": [], "accuracy": []}
 
@@ -70,8 +67,7 @@ class Client(object):
         self.optimizer = optimizers.__dict__[self.optimizer_name](
             params=self.model.parameters(),
             lr=self.learning_rate,
-            momentum=self.momentum,
-            weight_decay=self.weight_decay
+            momentum=self.momentum
         )
         data_size = len(self.training_dataloader.dataset)
 
@@ -96,9 +92,8 @@ class Client(object):
                 loss.backward()
                 self.optimizer.step()
 
-                # Compare predictions to labels and get accuracy score.
-                _, predicted = torch.max(outputs.data, 1)
-                correct += (predicted == labels).sum().item()
+                predicted = outputs.argmax(dim=1, keepdim=True)
+                correct += predicted.eq(labels.view_as(predicted)).sum().item()
 
                 # Update loss, accuracy and run_time metrics
                 losses.update(loss.item())
@@ -122,8 +117,8 @@ class Client(object):
         data_size = len(self.training_dataloader.dataset)
 
         losses = AverageMeter()
-        batch_time = AverageMeter()
         correct = 0
+        batch_time = AverageMeter()
 
         with torch.no_grad():
             start_time = time.time()
@@ -136,21 +131,20 @@ class Client(object):
                 losses.update(self.loss_function(outputs, labels))
 
                 # Compare predictions to labels and get accuracy score.
-                _, predicted = torch.max(outputs.data, 1)
-                correct += (predicted == labels).sum().item()
+                predicted = outputs.argmax(dim=1, keepdim=True)
+                correct += predicted.eq(labels.view_as(predicted)).sum().item()
 
-                # Update time and accuracy metric.
+                # Update time metric.
                 batch_time.update(time.time() - start_time)
 
-            accuracy = (correct / data_size) * 100
             message = f'[ Round: {round_number} ' \
                       f'| Local Eval ' \
                       f'| Time: {batch_time.avg:.2f}s ' \
                       f'| Client: {self.client_id} ' \
                       f'| Loss: {losses.avg:.5f} ' \
-                      f'| Tr_Acc ({correct}/{data_size})={accuracy:.2f}% ] '
+                      f'| Te_Acc ({correct}/{data_size})={((correct / data_size) * 100):.2f}% ]'
             logging.info(message)
 
         self.local_results = {"loss": [], "accuracy": []}
         self.local_results['loss'].append(losses.avg)
-        self.local_results['accuracy'].append(accuracy)
+        self.local_results['accuracy'].append(((correct / data_size) * 100))

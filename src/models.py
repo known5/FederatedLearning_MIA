@@ -65,7 +65,7 @@ class TestNet(nn.Module):
 
 class AlexNet(nn.Module):
 
-    def __init__(self, num_classes=100):
+    def __init__(self, num_classes=10):
         super(AlexNet, self).__init__()
         self.features = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=11, stride=4, padding=5),
@@ -98,7 +98,7 @@ class AttackModel(nn.Module):
                  exploit_last_layer=True,
                  exploit_label=True,
                  exploit_loss=True,
-                 exploit_gradient=False,
+                 exploit_gradient=True,
                  number_of_classes=100
                  ):
         super(AttackModel, self).__init__()
@@ -210,12 +210,12 @@ class GradientComponent(nn.Module):
 
         self.cnn = nn.Sequential(
             nn.Dropout(p=0.2),
-            nn.Conv2d(1, 1000, kernel_size=(1, 100), stride=1),
+            nn.Conv2d(1, 1000, kernel_size=(1, number_of_classes), stride=1),
             nn.ReLU(),
         )
         self.linear = nn.Sequential(
             nn.Dropout(p=0.2),
-            nn.Linear(256 * number_of_classes, 1024),
+            nn.Linear(256 * 1000, 1024),
             nn.ReLU(),
             nn.Dropout(p=0.2),
             nn.Linear(1024, 512),

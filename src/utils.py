@@ -30,10 +30,10 @@ class ConfusionMatrix(object):
     def update(self, y_pred, y_true):
         confusion_vector = (torch.round(y_pred) / y_true).float()
 
-        self.tp = torch.sum(confusion_vector == 1.).item()
-        self.fn = torch.sum(confusion_vector == 0.).item()
-        self.fp = torch.sum(confusion_vector == float('inf')).item()
-        self.tn = torch.sum(torch.isnan(confusion_vector)).item()
+        self.tp += torch.sum(confusion_vector == 1.).item()
+        self.fn += torch.sum(confusion_vector == 0.).item()
+        self.fp += torch.sum(confusion_vector == float('inf')).item()
+        self.tn += torch.sum(torch.isnan(confusion_vector)).item()
 
         return self.tp, self.fn, self.fp, self.tn
 
@@ -60,7 +60,7 @@ def get_duration(start_time):
 def load_model(model_name, is_local_model):
     """ Ja hier moet dus documentatie """
     if is_local_model:
-        model = AlexNet(num_classes=200)
+        model = AlexNet()
     else:
         if not hasattr(models, model_name):
             error_message = f"...model \"{model_name}\" is not supported or cannot be found in TorchVision models!"
@@ -100,7 +100,7 @@ def load_dataset(data_path, data_name):
     """ Ja hier moet dus documentatie """
     logging.debug('Loading datasets..')
 
-    if data_name == 'tiny-imagenet-200':
+    if data_name == 'tiny-imagenet-100':
         transform_train = transforms.Compose([
             transforms.Resize((32, 32)),
             transforms.ToTensor(),
