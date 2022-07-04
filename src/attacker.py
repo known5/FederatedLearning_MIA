@@ -27,10 +27,10 @@ def one_hot_encoding(labels, encoding):
     return torch.stack(list(map(lambda x: encoding[x], labels)))
 
 
-def load_target_model_for_inference(path):
+def load_target_model_for_inference(path, target_dir):
     """ Ja hier moet dus documentatie """
     model = AlexNet()
-    checkpoint = torch.load(path)
+    checkpoint = torch.load(path + target_dir)
     return model.load_state_dict(checkpoint['state_dict'])
 
 
@@ -114,7 +114,7 @@ class Attacker(Client):
             epoch_number = self.attack_epochs[epoch]
             if self.load_target_model > 0:
                 path = f'epoch_{epoch_number}_main'
-                self.model = load_target_model_for_inference(path)
+                self.model = load_target_model_for_inference(path, self.target_path)
 
             self.train_attack(epoch)
             if self.eval_attack > 0 and epoch % self.eval_attack == 0:
