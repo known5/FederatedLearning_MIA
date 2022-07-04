@@ -5,13 +5,13 @@ import torch.utils
 import torch.optim as optimizers
 from torch.utils.data import DataLoader
 from src.utils import AverageMeter, get_torch_loss_function
+import torchmetrics
 
 
 class Client(object):
 
     def __init__(self, client_id, training_param, device, model):
         """ Ja hier moet dus documentatie """
-        self.test_dataloader = None
         self.__model = None
         self.loss_function = get_torch_loss_function(training_param['loss_function'])
         self.number_of_epochs = training_param['epochs']
@@ -19,6 +19,7 @@ class Client(object):
         self.optimizer_name = training_param['optimizer']
         self.learning_rate = training_param['learning_rate']
         self.momentum = training_param['momentum']
+        self.weight_decay = training_param['weight_decay']
 
         self.batch_size = training_param['batch_size']
         self.client_id = client_id
@@ -27,10 +28,12 @@ class Client(object):
         self.training_data = None
         self.test_data = None
         self.training_dataloader = None
+        self.testing_dataloader = None
         self.optimizer = optimizers.__dict__[self.optimizer_name](
             params=self.model.parameters(),
             lr=self.learning_rate,
-            momentum=self.momentum
+            momentum=self.momentum,
+            weight_decay=self.weight_decay
         )
         self.local_results = {"loss": [], "accuracy": []}
 
@@ -44,23 +47,15 @@ class Client(object):
         """ Ja hier moet dus documentatie """
         self.__model = model
 
-    def load_data(self, training_data, test_data):
+    def load_data(self, training_data):
         """ Ja hier moet dus documentatie """
         self.training_data = training_data
-        self.test_data = test_data
         self.training_dataloader = DataLoader(self.training_data,
                                               batch_size=self.batch_size,
                                               shuffle=True,
                                               num_workers=2,
                                               pin_memory=False
                                               )
-
-        self.test_dataloader = DataLoader(self.test_data,
-                                          batch_size=self.batch_size,
-                                          shuffle=True,
-                                          num_workers=2,
-                                          pin_memory=False
-                                          )
 
         message = f'Client {self.client_id} loaded datasets successfully'
         logging.debug(message)
@@ -75,7 +70,8 @@ class Client(object):
         self.optimizer = optimizers.__dict__[self.optimizer_name](
             params=self.model.parameters(),
             lr=self.learning_rate,
-            momentum=self.momentum
+            momentum=self.momentum,
+            weight_decay=self.weight_decay
         )
         data_size = len(self.training_dataloader.dataset)
 
@@ -100,8 +96,9 @@ class Client(object):
                 loss.backward()
                 self.optimizer.step()
 
-                predicted = outputs.argmax(dim=1, keepdim=True)
-                correct += predicted.eq(labels.view_as(predicted)).sum().item()
+                # Compare predictions to labels and get accuracy score.
+                _, predicted = torch.max(outputs.data, 1)
+                correct += (predicted == labels).sum().item()
 
                 # Update loss, accuracy and run_time metrics
                 losses.update(loss.item())
@@ -122,15 +119,15 @@ class Client(object):
         self.model.eval()
         self.model.to(self.device)
 
-        data_size = len(self.test_dataloader.dataset)
+        data_size = len(self.training_dataloader.dataset)
 
         losses = AverageMeter()
-        correct = 0
         batch_time = AverageMeter()
+        correct = 0
 
         with torch.no_grad():
             start_time = time.time()
-            for data, labels in self.test_dataloader:
+            for data, labels in self.training_dataloader:
                 # Transfer data to CPU or GPU.
                 data, labels = data.float().to(self.device), labels.long().to(self.device)
 
@@ -139,20 +136,21 @@ class Client(object):
                 losses.update(self.loss_function(outputs, labels))
 
                 # Compare predictions to labels and get accuracy score.
-                predicted = outputs.argmax(dim=1, keepdim=True)
-                correct += predicted.eq(labels.view_as(predicted)).sum().item()
+                _, predicted = torch.max(outputs.data, 1)
+                correct += (predicted == labels).sum().item()
 
-                # Update time metric.
+                # Update time and accuracy metric.
                 batch_time.update(time.time() - start_time)
 
+            accuracy = (correct / data_size) * 100
             message = f'[ Round: {round_number} ' \
                       f'| Local Eval ' \
                       f'| Time: {batch_time.avg:.2f}s ' \
                       f'| Client: {self.client_id} ' \
                       f'| Loss: {losses.avg:.5f} ' \
-                      f'| Te_Acc ({correct}/{data_size})={((correct / data_size) * 100):.2f}% ]'
+                      f'| Tr_Acc ({correct}/{data_size})={accuracy:.2f}% ] '
             logging.info(message)
 
         self.local_results = {"loss": [], "accuracy": []}
         self.local_results['loss'].append(losses.avg)
-        self.local_results['accuracy'].append(((correct / data_size) * 100))
+        self.local_results['accuracy'].append(accuracy)

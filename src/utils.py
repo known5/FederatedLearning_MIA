@@ -29,10 +29,10 @@ class ConfusionMatrix(object):
     def update(self, y_pred, y_true):
         confusion_vector = (torch.round(y_pred) / y_true).float()
 
-        self.tp += torch.sum(confusion_vector == 1.).item()
-        self.fn += torch.sum(confusion_vector == 0.).item()
-        self.fp += torch.sum(confusion_vector == float('inf')).item()
-        self.tn += torch.sum(torch.isnan(confusion_vector)).item()
+        self.tp = torch.sum(confusion_vector == 1.).item()
+        self.fn = torch.sum(confusion_vector == 0.).item()
+        self.fp = torch.sum(confusion_vector == float('inf')).item()
+        self.tn = torch.sum(torch.isnan(confusion_vector)).item()
 
         return self.tp, self.fn, self.fp, self.tn
 
