@@ -87,28 +87,28 @@ class Attacker(Client):
         logging.debug(' Loading datasets for attacker')
         # Get distributions for attack data from server.
         distribution = self.attack_data_distribution
-
         # Get the indicis for the right amount of training and test samples.
         self.class_attack_data_subsets = []
         self.class_test_data_subsets = []
 
         for target in range(self.number_of_classes):
-            low, high = target * 500, (target + 1) * 500
-
+            low, high = target * 100, (target + 1) * 100
             amount_per_class = distribution[0] // self.number_of_classes
             training_member_index = torch.randint(low=low, high=high, size=(1, amount_per_class))[0].tolist()
             train_member_set = torch.utils.data.Subset(training_data, training_member_index)
 
+            low, high = target * 100, (target + 1) * 100
             amount_per_class = distribution[1] // self.number_of_classes
             training_non_member_index = torch.randint(low=low, high=high, size=(1, amount_per_class))[0].tolist()
             train_non_member_set = torch.utils.data.Subset(test_data, training_non_member_index)
 
             self.class_attack_data_subsets.append((train_member_set, train_non_member_set))
-
+            low, high = target * 1000, (target + 1) * 1000
             amount_per_class = distribution[2] // self.number_of_classes
             test_member_index = torch.randint(low=low, high=high, size=(1, amount_per_class))[0].tolist()
             test_member_set = torch.utils.data.Subset(training_data, test_member_index)
 
+            low, high = target * 100, (target + 1) * 100
             amount_per_class = distribution[3] // self.number_of_classes
             test_non_member_index = torch.randint(low=low, high=high, size=(1, amount_per_class))[0].tolist()
             test_non_member_set = torch.utils.data.Subset(test_data, test_non_member_index)
@@ -150,8 +150,10 @@ class Attacker(Client):
             losses = AverageMeter()
             # perform inference per class for confusion matrix to keep accurate track of scores.
             for data_class in range(self.number_of_classes):
+                start_time = time.time()
                 confusion_matrix.reset()
                 member, non_member = self.class_attack_data_subsets[data_class]
+
                 temp_data_loader = DataLoader(member,
                                               batch_size=self.attack_batch_size,
                                               shuffle=True,
@@ -172,7 +174,6 @@ class Attacker(Client):
                     attack_inputs = []
                     one_hot_labels = None
                     gradients = torch.zeros(0)
-                    start_time = time.time()
                     # Load data to device
                     member_input, member_target = member_input.float().to(self.device) \
                         , member_target.long().to(self.device)
