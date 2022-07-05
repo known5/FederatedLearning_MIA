@@ -1,6 +1,6 @@
 experiment_config:
   seed: 42
-  device: "cuda"
+  device: "cpu"
   train_model: 0
   local_eval: 0
   global_eval: 0

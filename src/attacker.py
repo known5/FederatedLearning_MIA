@@ -51,8 +51,8 @@ class Attacker(Client):
         super().__init__(client_id, local_data, device, target_train_model)
         # To exploit layers
         self.exploit_last_layer = True
-        self.exploit_label = False,
-        self.exploit_loss = False,
+        self.exploit_label = False
+        self.exploit_loss = False
         self.exploit_gradient = False
 
         self.attack_epochs = attack_data['attack_epochs']
