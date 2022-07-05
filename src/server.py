@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 
 from src.attacker import Attacker
 from src.client import Client
+from src.models import AlexNet
 from src.utils import load_dataset, load_model, AverageMeter, get_torch_loss_function
 
 
@@ -24,6 +25,15 @@ def save_checkpoint_adversary(state, is_best, checkpoint='checkpoint', filename=
     torch.save(state, filepath)
     if is_best:
         shutil.copyfile(filepath, os.path.join(checkpoint, 'model_adversary_best.pth.tar'))
+
+
+def load_target_model(path, filename):
+    """ Ja hier moet dus documentatie """
+    model = AlexNet()
+    filepath = os.path.join(path, filename)
+    checkpoint = torch.load(filepath)
+    model.load_state_dict(checkpoint['state_dict'])
+    return model
 
 
 class CentralServer(object):
@@ -43,7 +53,9 @@ class CentralServer(object):
         self.attack_param = attack_param
         self.do_passive_attack = attack_param['passive_attack']
         self.save_attack_model = attack_param['save_attack_model']
-        self.load_target_models = attack_param['load_target_models']
+        self.observed_target_models = attack_param['observed_target_models']
+        self.attack_model_path = attack_param['attack_model_path']
+        self.eval_attack = attack_param['eval_attack']
 
         self.dataset_path = data_param['data_path']
         self.dataset_name = data_param['dataset_name']
@@ -63,6 +75,7 @@ class CentralServer(object):
         self.global_test_dataloader = None
         self.clients = None
         self.model = None
+        self.target_models_for_inference = []
 
     def start_up(self):
         """ Ja hier moet dus documentatie """
@@ -76,6 +89,12 @@ class CentralServer(object):
                            self.is_idd)
 
         self.share_model_with_clients()
+
+        if self.observed_target_models is not []:
+            for index in self.observed_target_models:
+                filename = f'epoch_{index}_main_clients_{self.number_of_clients}'
+                self.observed_target_models.append(load_target_model(self.model_path, filename))
+
         message = 'Completed main server startup'
         logging.debug(message)
 
@@ -89,9 +108,7 @@ class CentralServer(object):
                                         training_param,
                                         attack_param,
                                         device=self.device,
-                                        target_train_model=copy.deepcopy(self.model),
-                                        target_path=self.model_path,
-                                        load_models=self.load_target_models
+                                        target_train_model=copy.deepcopy(self.model)
                                         )
                                )
                 attacker_is_generated = True
@@ -235,9 +252,12 @@ class CentralServer(object):
                         checkpoint=self.model_path
                     )
 
-            # If checked, perform MIA during each round.
+            # If checked, perform passive MIA during each round.
             if self.do_passive_attack > 0 and index % self.do_passive_attack == 0:
-                attacker.perform_attack()
+                attacker.train_attack(index, self.observed_target_models)
+
+                if self.eval_attack > 0 and index % self.eval_attack == 0:
+                    attacker.test_attack(index, self.observed_target_models)
 
                 if self.save_attack_model > 0 and index % self.save_attack_model == 0:
                     is_best = (round_accuracy >= max(self.attack_results['accuracy']))
@@ -249,7 +269,7 @@ class CentralServer(object):
                         'optimizer': attacker.attack_optimizer.state.dict()
                     }, is_best=is_best,
                         filename=f'epoch_{index}_attack_clients_{self.number_of_clients}',
-                        checkpoint=self.model_path
+                        checkpoint=self.attack_model_path
                     )
 
             message = f'[ Round: {index} | Finished! ]'

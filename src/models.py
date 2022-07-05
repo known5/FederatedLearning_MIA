@@ -95,80 +95,65 @@ class AttackModel(nn.Module):
     """ Ja hier moet dus documentatie """
 
     def __init__(self, target_model,
-                 exploit_last_layer=False,
-                 exploit_label=False,
-                 exploit_loss=False,
-                 exploit_gradient=False,
+                 number_of_observed_models=1,
                  number_of_classes=100
                  ):
         super(AttackModel, self).__init__()
         self.last_layer_name = get_last_layer_name(target_model)
         self.encoder_inputs = []
         self.model = target_model
-
-        self.exploit_last_layer = exploit_last_layer
-        self.exploit_label = exploit_label
-        self.exploit_loss = exploit_loss
-        self.exploit_gradient = exploit_gradient
+        self.number_of_observed_models = number_of_observed_models
 
         # create component if last layer is to be exploited
-        if exploit_last_layer:
-            self.layer_component = FcnComponent(number_of_classes, 100)
-            module_output = get_output_shape_of_last_layer(self.layer_component)
-            self.encoder_inputs.append(module_output)
+        self.layer_component = FcnComponent(number_of_classes, 100)
+        module_output = get_output_shape_of_last_layer(self.layer_component)
+        self.encoder_inputs.append(module_output)
 
-            # create component if OHE label is to be exploited
-        if exploit_label:
-            self.label_component = FcnComponent(number_of_classes, 128)
-            module_output = get_output_shape_of_last_layer(self.label_component)
-            self.encoder_inputs.append(module_output)
+        # create component if OHE label is to be exploited
+        self.label_component = FcnComponent(number_of_classes, 128)
+        module_output = get_output_shape_of_last_layer(self.label_component)
+        self.encoder_inputs.append(module_output)
 
-            # create component if loss value is to be exploited
-        if exploit_loss:
-            self.loss_component = FcnComponent(1, number_of_classes)
-            module_output = get_output_shape_of_last_layer(self.loss_component)
-            self.encoder_inputs.append(module_output)
+        # create component if loss value is to be exploited
+        self.loss_component = FcnComponent(1, number_of_classes)
+        module_output = get_output_shape_of_last_layer(self.loss_component)
+        self.encoder_inputs.append(module_output)
 
-            # creates CNN/FCN component for gradient values of layers of gradients to exploit
-        if exploit_gradient:
-            self.gradient_component = GradientComponent(number_of_classes)
-            module_output = get_output_shape_of_last_layer(self.gradient_component)
-            self.encoder_inputs.append(module_output)
+        # creates CNN/FCN component for gradient values of layers of gradients to exploit
+        self.gradient_component = GradientComponent(number_of_classes)
+        module_output = get_output_shape_of_last_layer(self.gradient_component)
+        self.encoder_inputs.append(module_output)
 
-        self.encoder = AutoEncoder(self.encoder_inputs)
+        self.encoder = AutoEncoder(self.encoder_inputs, number_of_observed_models)
+        self.output = nn.Sigmoid()
 
-    def forward(self, inputs) -> torch.Tensor:
-        encoder_inputs = []
-        if self.exploit_last_layer:
-            temp = self.layer_component(inputs[0])
-            encoder_inputs.append(temp)
+    def forward(self, model_predictions, encoded_labels, loss_values, gradients) -> torch.Tensor:
 
-        if self.exploit_label:
-            temp = self.label_component(inputs[1])
-            encoder_inputs.append(temp)
+        for model_input in range(self.number_of_observed_models):
+            temp = self.layer_component(model_predictions[model_input])
+            temp1 = self.label_component(encoded_labels[model_input])
+            temp2 = self.loss_component(loss_values[model_input])
+            temp3 = self.gradient_component(gradients[model_input])
 
-        if self.exploit_loss:
-            temp = self.loss_component(inputs[2])
-            encoder_inputs.append(temp)
+            if model_input == 0:
+                x = torch.cat((temp, temp1, temp2, temp3), dim=1)
+            else:
+                x = torch.cat((temp, temp1, temp2, temp3, x), dim=1)
 
-        if self.exploit_gradient:
-            temp = self.gradient_component(inputs[3])
-            encoder_inputs.append(temp)
-
-        x = torch.cat(encoder_inputs, dim=1)
-        return self.encoder(x)
+        is_member = self.encoder(x)
+        return self.output(is_member)
 
 
 class AutoEncoder(nn.Module):
     """ Ja hier moet dus documentatie """
 
-    def __init__(self, encoder_input):
+    def __init__(self, encoder_input, number_of_observed_models):
         """ Ja hier moet dus documentatie """
         super(AutoEncoder, self).__init__()
         input_concat = sum(encoder_input)
 
         self.encoder = nn.Sequential(
-            nn.Linear(input_concat, 256),
+            nn.Linear(input_concat * number_of_observed_models, 256),
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU(),
