@@ -1,13 +1,14 @@
 import copy
 import logging
+import os
 import shutil
 import time
+
 import torch
 from torch.utils.data import DataLoader
-import os
 
-from src.client import Client
 from src.attacker import Attacker
+from src.client import Client
 from src.utils import load_dataset, load_model, AverageMeter, get_torch_loss_function
 
 
@@ -213,9 +214,9 @@ class CentralServer(object):
             logging.info(message)
             # If checked, do training cycle
             if self.train_model > 0 and index % self.train_model == 0:
-                # self.do_training(index)
-                # self.aggregate_model()
-                # self.share_model_with_clients()
+                self.do_training(index)
+                self.aggregate_model()
+                self.share_model_with_clients()
                 # If checked, perform global model evaluation every round.
                 if self.do_global_eval > 0 and index % self.do_global_eval == 0:
                     round_loss, round_accuracy = self.test_global_model(index)
@@ -223,35 +224,33 @@ class CentralServer(object):
                     self.results['accuracy'].append(round_accuracy)
                 # If checked, save the current model and optimizer state
                 if self.save_model > 0 and index % self.save_model == 0:
-                    is_best = round_accuracy > max(self.results['accuracy'])
-                    if is_best:
-                        save_checkpoint({
-                            'epoch': index,
-                            'state_dict': self.model.state_dict(),
-                            'acc': round_accuracy,
-                            'best_acc': is_best
-                        }, is_best=is_best,
-                            filename=f'epoch_{index}_main_clients_{self.number_of_clients}',
-                            checkpoint=self.model_path
-                        )
+                    is_best = (round_accuracy >= max(self.results['accuracy']))
+                    save_checkpoint({
+                        'epoch': index,
+                        'state_dict': self.model.state_dict(),
+                        'acc': round_accuracy,
+                        'best_acc': is_best
+                    }, is_best=is_best,
+                        filename=f'epoch_{index}_main_clients_{self.number_of_clients}',
+                        checkpoint=self.model_path
+                    )
 
             # If checked, perform MIA during each round.
             if self.do_passive_attack > 0 and index % self.do_passive_attack == 0:
                 attacker.perform_attack()
 
                 if self.save_attack_model > 0 and index % self.save_attack_model == 0:
-                    is_best = round_accuracy > max(self.attack_results['accuracy'])
-                    if is_best:
-                        save_checkpoint_adversary({
-                            'epoch': index,
-                            'state_dict': self.clients[0].model.state_dict(),
-                            'acc': round_accuracy,
-                            'best_acc': is_best,
-                            'optimizer': attacker.attack_optimizer.state.dict()
-                        }, is_best=is_best,
-                            filename=f'epoch_{index}_attack_clients_{self.number_of_clients}',
-                            checkpoint=self.model_path
-                        )
+                    is_best = (round_accuracy >= max(self.attack_results['accuracy']))
+                    save_checkpoint_adversary({
+                        'epoch': index,
+                        'state_dict': self.clients[0].model.state_dict(),
+                        'acc': round_accuracy,
+                        'best_acc': is_best,
+                        'optimizer': attacker.attack_optimizer.state.dict()
+                    }, is_best=is_best,
+                        filename=f'epoch_{index}_attack_clients_{self.number_of_clients}',
+                        checkpoint=self.model_path
+                    )
 
             message = f'[ Round: {index} | Finished! ]'
             logging.info(message)
