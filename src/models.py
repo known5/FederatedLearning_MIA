@@ -215,7 +215,7 @@ class GradientComponent(nn.Module):
         )
         self.linear = nn.Sequential(
             nn.Dropout(p=0.2),
-            nn.Linear(256 * number_of_classes, 1024),
+            nn.Linear(256 * 1000, 1024),
             nn.ReLU(),
             nn.Dropout(p=0.2),
             nn.Linear(1024, 512),

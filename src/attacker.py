@@ -51,9 +51,9 @@ class Attacker(Client):
         super().__init__(client_id, local_data, device, target_train_model)
         # To exploit layers
         self.exploit_last_layer = True
-        self.exploit_label = False
-        self.exploit_loss = False
-        self.exploit_gradient = False
+        self.exploit_label = True
+        self.exploit_loss = True
+        self.exploit_gradient = True
 
         self.attack_epochs = attack_data['attack_epochs']
         self.eval_attack = attack_data['eval_attack']
@@ -212,6 +212,7 @@ class Attacker(Client):
                 self.model.to("cpu")
                 self.attack_model.train()
                 self.attack_model.to(self.device)
+                self.attack_optimizer.zero_grad()
 
                 # Set all data components to device
                 for component in range(len(attack_inputs)):
@@ -236,7 +237,6 @@ class Attacker(Client):
                 batch_time.update(time.time() - start_time)
 
                 # Perform optimizer steps
-                self.attack_optimizer.zero_grad()
                 attack_loss.backward()
                 self.attack_optimizer.step()
                 # Place model back to CPU
@@ -319,7 +319,7 @@ class Attacker(Client):
                             loss.backward(retain_graph=False)
                         else:
                             loss.backward(retain_graph=True)
-                        current_grads = self.model.classifier.weight.grad.view([1, 1, 256, 200])
+                        current_grads = self.model.classifier.weight.grad.view([1, 1, 256, self.number_of_classes])
 
                         if gradients.size()[0] == 0:
                             gradients = current_grads
