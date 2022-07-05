@@ -131,7 +131,7 @@ class AttackModel(nn.Module):
 
         for model_input in range(self.number_of_observed_models):
             temp = self.layer_component(model_predictions[model_input])
-            temp1 = self.label_component(encoded_labels[model_input])
+            temp1 = self.label_component(encoded_labels)
             temp2 = self.loss_component(loss_values[model_input])
             temp3 = self.gradient_component(gradients[model_input])
 
