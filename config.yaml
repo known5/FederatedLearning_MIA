@@ -12,7 +12,7 @@ attack_settings:
   load_target_models : 1
   eval_attack: 1
   save_attack_model: 0
-  attack_epochs: [ 5, 10, 15, 20, 25 ]
+  attack_epochs: [ 105, 110, 115, 120, 125 ]
   attack_batch_size: 25
   attack_loss_function: 'MSELoss'
   attack_optimizer: 'Adam'

@@ -1,11 +1,11 @@
-import time
 import logging
+import time
 
-import torch.utils
 import torch.optim as optimizers
+import torch.utils
 from torch.utils.data import DataLoader
+
 from src.utils import AverageMeter, get_torch_loss_function
-import torchmetrics
 
 
 class Client(object):

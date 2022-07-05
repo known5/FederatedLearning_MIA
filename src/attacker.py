@@ -87,28 +87,28 @@ class Attacker(Client):
         logging.debug(' Loading datasets for attacker')
         # Get distributions for attack data from server.
         distribution = self.attack_data_distribution
-
         # Get the indicis for the right amount of training and test samples.
         self.class_attack_data_subsets = []
         self.class_test_data_subsets = []
 
         for target in range(self.number_of_classes):
-            low, high = target * 500, (target + 1) * 500
-
+            low, high = target * 100, (target + 1) * 100
             amount_per_class = distribution[0] // self.number_of_classes
             training_member_index = torch.randint(low=low, high=high, size=(1, amount_per_class))[0].tolist()
             train_member_set = torch.utils.data.Subset(training_data, training_member_index)
 
+            low, high = target * 100, (target + 1) * 100
             amount_per_class = distribution[1] // self.number_of_classes
             training_non_member_index = torch.randint(low=low, high=high, size=(1, amount_per_class))[0].tolist()
             train_non_member_set = torch.utils.data.Subset(test_data, training_non_member_index)
 
             self.class_attack_data_subsets.append((train_member_set, train_non_member_set))
-
+            low, high = target * 1000, (target + 1) * 1000
             amount_per_class = distribution[2] // self.number_of_classes
             test_member_index = torch.randint(low=low, high=high, size=(1, amount_per_class))[0].tolist()
             test_member_set = torch.utils.data.Subset(training_data, test_member_index)
 
+            low, high = target * 100, (target + 1) * 100
             amount_per_class = distribution[3] // self.number_of_classes
             test_non_member_index = torch.randint(low=low, high=high, size=(1, amount_per_class))[0].tolist()
             test_non_member_set = torch.utils.data.Subset(test_data, test_non_member_index)
@@ -141,118 +141,119 @@ class Attacker(Client):
             lr=self.learning_rate,
             momentum=self.momentum
         )
-        # Perform X number of epochs, each epoch passes the entire dataset once.
-        for epoch in range(1, len(self.attack_epochs) + 1):
-            # confusion matrix and accuracy metric initialized
-            confusion_matrix = ConfusionMatrix()
-            accuracy = AverageMeter()
-            batch_time = AverageMeter()
-            losses = AverageMeter()
-            # perform inference per class for confusion matrix to keep accurate track of scores.
-            for data_class in range(self.number_of_classes):
-                confusion_matrix.reset()
-                member, non_member = self.class_attack_data_subsets[data_class]
-                temp_data_loader = DataLoader(member,
-                                              batch_size=self.attack_batch_size,
-                                              shuffle=True,
-                                              num_workers=2,
-                                              pin_memory=False
-                                              )
 
-                temp_data_loader_2 = DataLoader(non_member,
-                                                batch_size=self.attack_batch_size,
-                                                shuffle=True,
-                                                num_workers=2,
-                                                pin_memory=False
-                                                )
+        # confusion matrix and accuracy metric initialized
+        confusion_matrix = ConfusionMatrix()
+        accuracy = AverageMeter()
+        batch_time = AverageMeter()
+        losses = AverageMeter()
+        # perform inference per class for confusion matrix to keep accurate track of scores.
+        for data_class in range(self.number_of_classes):
+            start_time = time.time()
+            confusion_matrix.reset()
+            member, non_member = self.class_attack_data_subsets[data_class]
 
-                data_loader = zip(temp_data_loader, temp_data_loader_2)
-                for (member_input, member_target), (non_member_input, non_member_target) in data_loader:
-                    # Set and updates variables
-                    attack_inputs = []
-                    one_hot_labels = None
-                    gradients = torch.zeros(0)
-                    start_time = time.time()
-                    # Load data to device
-                    member_input, member_target = member_input.float().to(self.device) \
-                        , member_target.long().to(self.device)
-                    non_member_input, non_member_target = non_member_input.float().to(self.device) \
-                        , non_member_target.long().to(self.device)
+            temp_data_loader = DataLoader(member,
+                                          batch_size=self.attack_batch_size,
+                                          shuffle=True,
+                                          num_workers=2,
+                                          pin_memory=False
+                                          )
 
-                    data, labels = torch.cat((member_input, non_member_input)), torch.cat(
-                        (member_target, non_member_target))
+            temp_data_loader_2 = DataLoader(non_member,
+                                            batch_size=self.attack_batch_size,
+                                            shuffle=True,
+                                            num_workers=2,
+                                            pin_memory=False
+                                            )
 
-                    self.model.to(self.device)
-                    predictions = self.model(data)
-                    if self.exploit_last_layer:
-                        attack_inputs.append(predictions)
-                    if self.exploit_label:
-                        one_hot_labels = one_hot_encoding(labels, self.one_hot_encoding, self.device)
-                        attack_inputs.append(one_hot_labels.float())
-                    if self.exploit_loss:
-                        temp = torch.sum(predictions * one_hot_labels, dim=1).view([-1, 1])
-                        attack_inputs.append(temp)
-                    if self.exploit_gradient:
-                        for index in range(predictions.size(0)):
-                            loss = self.loss_function(predictions[index].view([1, -1]), labels[index].view([-1]))
-                            self.optimizer.zero_grad()
-                            if index == (predictions.size(0)) - 1:
-                                loss.backward(retain_graph=False)
-                            else:
-                                loss.backward(retain_graph=True)
-                            current_grads = self.model.classifier.weight.grad.view([1, 1, 256, self.number_of_classes])
+            data_loader = zip(temp_data_loader, temp_data_loader_2)
+            for (member_input, member_target), (non_member_input, non_member_target) in data_loader:
+                # Set and updates variables
+                attack_inputs = []
+                one_hot_labels = None
+                gradients = torch.zeros(0)
+                # Load data to device
+                member_input, member_target = member_input.float().to(self.device) \
+                    , member_target.long().to(self.device)
+                non_member_input, non_member_target = non_member_input.float().to(self.device) \
+                    , non_member_target.long().to(self.device)
 
-                            if gradients.size()[0] == 0:
-                                gradients = current_grads
-                            else:
-                                gradients = torch.cat((gradients, current_grads))
-                        attack_inputs.append(gradients)
+                data, labels = torch.cat((member_input, non_member_input)), torch.cat(
+                    (member_target, non_member_target))
 
-                    # Get the predictions for the membership classification
-                    self.model.to("cpu")
-                    self.attack_model.train()
-                    self.attack_model.to(self.device)
+                self.model.to(self.device)
+                predictions = self.model(data)
+                if self.exploit_last_layer:
+                    attack_inputs.append(predictions)
+                if self.exploit_label:
+                    one_hot_labels = one_hot_encoding(labels, self.one_hot_encoding, self.device)
+                    attack_inputs.append(one_hot_labels.float())
+                if self.exploit_loss:
+                    temp = torch.sum(predictions * one_hot_labels, dim=1).view([-1, 1])
+                    attack_inputs.append(temp)
+                if self.exploit_gradient:
+                    for index in range(predictions.size(0)):
+                        loss = self.loss_function(predictions[index].view([1, -1]), labels[index].view([-1]))
+                        self.optimizer.zero_grad()
+                        if index == (predictions.size(0)) - 1:
+                            loss.backward(retain_graph=False)
+                        else:
+                            loss.backward(retain_graph=True)
+                        current_grads = self.model.classifier.weight.grad.view([1, 1, 256, self.number_of_classes])
 
-                    # Set all data components to device
-                    for component in range(len(attack_inputs)):
-                        attack_inputs[component] = attack_inputs[component].data.float().to(self.device)
-                    membership_predictions = self.attack_model(attack_inputs)
+                        if gradients.size()[0] == 0:
+                            gradients = current_grads
+                        else:
+                            gradients = torch.cat((gradients, current_grads))
+                    attack_inputs.append(gradients)
 
-                    # Change labels of the data for binary attack classification
-                    member_target = torch.Tensor([1 for _ in member_target])
-                    non_member_target = torch.Tensor([0 for _ in non_member_target])
-                    membership_labels = torch.cat((member_target, non_member_target))
-                    membership_labels = torch.unsqueeze(membership_labels, -1).data.float().to(self.device)
+                # Get the predictions for the membership classification
+                self.model.to("cpu")
+                self.attack_model.train()
+                self.attack_model.to(self.device)
 
-                    # Calculate the loss of attack model
-                    attack_loss = self.attack_loss_function(membership_predictions, membership_labels)
+                # Set all data components to device
+                for component in range(len(attack_inputs)):
+                    attack_inputs[component] = attack_inputs[component].data.float().to(self.device)
+                membership_predictions = self.attack_model(attack_inputs)
 
-                    # Measure training accuracy and report metric
-                    acc = np.mean((membership_predictions.data.cpu().numpy() > 0.5) == membership_labels.data.cpu().numpy()) * 100
-                    confusion_matrix.update(membership_predictions, membership_labels)
-                    accuracy.update(acc, self.attack_batch_size)
-                    losses.update(attack_loss.item(), self.attack_batch_size)
-                    batch_time.update(time.time() - start_time)
+                # Change labels of the data for binary attack classification
+                member_target = torch.Tensor([1 for _ in member_target])
+                non_member_target = torch.Tensor([0 for _ in non_member_target])
+                membership_labels = torch.cat((member_target, non_member_target))
+                membership_labels = torch.unsqueeze(membership_labels, -1).data.float().to(self.device)
 
-                    # Perform optimizer steps
-                    self.attack_optimizer.zero_grad()
-                    attack_loss.backward()
-                    self.attack_optimizer.step()
-                    # Place model back to CPU
-                    self.attack_model.to('cpu')
+                # Calculate the loss of attack model
+                attack_loss = self.attack_loss_function(membership_predictions, membership_labels)
 
-                temp = confusion_matrix.get_confusion_matrix()
-                message = f'[ Round: {round_number} ' \
-                          f'| Attacker Train ' \
-                          f'| Class: {data_class}' \
-                          f'| Time: {batch_time.avg:.2f}s ' \
-                          f'| Loss: {losses.avg:.5f} ' \
-                          f'| Acc: {accuracy.avg:.2f}% ]' \
-                          f'| Conf Matrix: TP:{temp[0]}' \
-                          f' FP:{temp[1]}' \
-                          f' TN:{temp[2]}' \
-                          f' FN:{temp[3]} ]'
-                logging.info(message)
+                # Measure training accuracy and report metric
+                acc = np.mean(
+                    (membership_predictions.data.cpu().numpy() > 0.5) == membership_labels.data.cpu().numpy()) * 100
+                confusion_matrix.update(membership_predictions, membership_labels)
+                accuracy.update(acc, self.attack_batch_size)
+                losses.update(attack_loss.item(), self.attack_batch_size)
+                batch_time.update(time.time() - start_time)
+
+                # Perform optimizer steps
+                self.attack_optimizer.zero_grad()
+                attack_loss.backward()
+                self.attack_optimizer.step()
+                # Place model back to CPU
+                self.attack_model.to('cpu')
+
+            temp = confusion_matrix.get_confusion_matrix()
+            message = f'[ Round: {round_number} ' \
+                      f'| Attacker Train ' \
+                      f'| Class: {data_class}' \
+                      f'| Time: {batch_time.avg:.2f}s ' \
+                      f'| Loss: {losses.avg:.5f} ' \
+                      f'| Acc: {accuracy.avg:.2f}% ]' \
+                      f'| Conf Matrix: TP:{temp[0]}' \
+                      f' FP:{temp[1]}' \
+                      f' TN:{temp[2]}' \
+                      f' FN:{temp[3]} ]'
+            logging.info(message)
         self.model.to("cpu")
 
     def test_attack(self, round_number):
@@ -261,93 +262,110 @@ class Attacker(Client):
         self.model.eval()
         self.model.to(self.device)
 
-        # Perform X number of epochs, each epoch passes the entire dataset once.
-        for epoch in range(1, self.attack_epochs + 1):
-
-            confusion_matrix = ConfusionMatrix()
-            batch_time = AverageMeter()
-            losses = AverageMeter()
+        # Metrics
+        confusion_matrix = ConfusionMatrix()
+        batch_time = AverageMeter()
+        losses = AverageMeter()
+        accuracy = AverageMeter()
+        for data_class in range(self.number_of_classes):
             start_time = time.time()
-            accuracy = AverageMeter()
-            for data_class in range(self.number_of_classes):
-                data_loader = self.class_test_data_subsets[data_class]
-                for (member_input, member_target), (non_member_input, non_member_target) in data_loader:
-                    # Set and updates variables
-                    attack_inputs = []
-                    one_hot_labels = None
-                    gradients = torch.zeros(0)
-                    # Load data to device
-                    member_input, member_target = member_input.float().to(self.device) \
-                        , member_target.long().to(self.device)
-                    non_member_input, non_member_target = non_member_input.float().to(self.device) \
-                        , non_member_target.long().to(self.device)
+            confusion_matrix.reset()
+            member, non_member = self.class_test_data_subsets[data_class]
 
-                    data, labels = torch.cat((member_input, non_member_input)), torch.cat(
-                        (member_target, non_member_target))
+            temp_data_loader = DataLoader(member,
+                                          batch_size=self.attack_batch_size,
+                                          shuffle=True,
+                                          num_workers=2,
+                                          pin_memory=False
+                                          )
 
-                    predictions = self.model(data)
-                    if self.exploit_last_layer:
-                        attack_inputs.append(predictions)
-                    if self.exploit_label:
-                        one_hot_labels = one_hot_encoding(labels, self.one_hot_encoding, self.device)
-                        attack_inputs.append(one_hot_labels.float())
-                    if self.exploit_loss:
-                        temp = torch.sum(predictions * one_hot_labels, dim=1).view([-1, 1])
-                        attack_inputs.append(temp)
-                    if self.exploit_gradient:
-                        for index in range(predictions.size(0)):
-                            loss = self.loss_function(predictions[index].view([1, -1]), labels[index].view([-1]))
-                            self.optimizer.zero_grad()
-                            if index == (predictions.size(0)) - 1:
-                                loss.backward(retain_graph=False)
-                            else:
-                                loss.backward(retain_graph=True)
-                            current_grads = self.model.classifier.weight.grad.view([1, 1, 256, 200])
+            temp_data_loader_2 = DataLoader(non_member,
+                                            batch_size=self.attack_batch_size,
+                                            shuffle=True,
+                                            num_workers=2,
+                                            pin_memory=False
+                                            )
 
-                            if gradients.size()[0] == 0:
-                                gradients = current_grads
-                            else:
-                                gradients = torch.cat((gradients, current_grads))
-                        attack_inputs.append(gradients)
+            data_loader = zip(temp_data_loader, temp_data_loader_2)
+            for (member_input, member_target), (non_member_input, non_member_target) in data_loader:
+                # Set and updates variables
+                attack_inputs = []
+                one_hot_labels = None
+                gradients = torch.zeros(0)
+                # Load data to device
+                member_input, member_target = member_input.float().to(self.device) \
+                    , member_target.long().to(self.device)
+                non_member_input, non_member_target = non_member_input.float().to(self.device) \
+                    , non_member_target.long().to(self.device)
 
-                    # Get the predictions for the membership classification
-                    self.model.to("cpu")
-                    self.attack_model.eval()
-                    self.attack_model.to(self.device)
+                data, labels = torch.cat((member_input, non_member_input)), torch.cat(
+                    (member_target, non_member_target))
 
-                    # Set all data components to device
-                    for component in range(len(attack_inputs)):
-                        attack_inputs[component] = attack_inputs[component].data.float().to(self.device)
-                    membership_predictions = self.attack_model(attack_inputs)
+                self.model.to(self.device)
+                predictions = self.model(data)
+                if self.exploit_last_layer:
+                    attack_inputs.append(predictions)
+                if self.exploit_label:
+                    one_hot_labels = one_hot_encoding(labels, self.one_hot_encoding, self.device)
+                    attack_inputs.append(one_hot_labels.float())
+                if self.exploit_loss:
+                    temp = torch.sum(predictions * one_hot_labels, dim=1).view([-1, 1])
+                    attack_inputs.append(temp)
+                if self.exploit_gradient:
+                    for index in range(predictions.size(0)):
+                        loss = self.loss_function(predictions[index].view([1, -1]), labels[index].view([-1]))
+                        self.optimizer.zero_grad()
+                        if index == (predictions.size(0)) - 1:
+                            loss.backward(retain_graph=False)
+                        else:
+                            loss.backward(retain_graph=True)
+                        current_grads = self.model.classifier.weight.grad.view([1, 1, 256, 200])
 
-                    # Change labels of the data for binary attack classification
-                    member_target = torch.Tensor([1 for _ in member_target])
-                    non_member_target = torch.Tensor([0 for _ in non_member_target])
-                    membership_labels = torch.cat((member_target, non_member_target))
-                    membership_labels = torch.unsqueeze(membership_labels, -1).data.float().to(self.device)
+                        if gradients.size()[0] == 0:
+                            gradients = current_grads
+                        else:
+                            gradients = torch.cat((gradients, current_grads))
+                    attack_inputs.append(gradients)
 
-                    # Calculate the loss of attack model
-                    attack_loss = self.attack_loss_function(membership_predictions, membership_labels)
+                # Get the predictions for the membership classification
+                self.model.to("cpu")
+                self.attack_model.eval()
+                self.attack_model.to(self.device)
 
-                    # Measure training accuracy and report metrics
-                    acc = np.mean((membership_predictions.data.numpy() > 0.5) == membership_labels.data.numpy()) * 100
-                    confusion_matrix.update(membership_predictions, membership_labels)
-                    accuracy.update(acc, self.attack_batch_size)
-                    losses.update(attack_loss.item(), self.attack_batch_size)
-                    batch_time.update(time.time() - start_time)
+                # Set all data components to device
+                for component in range(len(attack_inputs)):
+                    attack_inputs[component] = attack_inputs[component].data.float().to(self.device)
+                membership_predictions = self.attack_model(attack_inputs)
 
-                    self.attack_model.to('cpu')
+                # Change labels of the data for binary attack classification
+                member_target = torch.Tensor([1 for _ in member_target])
+                non_member_target = torch.Tensor([0 for _ in non_member_target])
+                membership_labels = torch.cat((member_target, non_member_target))
+                membership_labels = torch.unsqueeze(membership_labels, -1).data.float().to(self.device)
 
-                temp = confusion_matrix.get_confusion_matrix()
-                message = f'[ Round: {round_number} ' \
-                          f'| Attacker Test ' \
-                          f'| Class: {data_class}' \
-                          f'| Time: {batch_time.avg:.2f}s ' \
-                          f'| Loss: {losses.avg:.5f} ' \
-                          f'| Acc: {accuracy.avg:.2f}% ]' \
-                          f'| Conf Matrix: TP:{temp[0]}' \
-                          f' FP:{temp[1]}' \
-                          f' TN:{temp[2]}' \
-                          f' FN:{temp[3]} ]'
-                logging.info(message)
+                # Calculate the loss of attack model
+                attack_loss = self.attack_loss_function(membership_predictions, membership_labels)
+
+                # Measure training accuracy and report metrics
+                acc = np.mean(
+                    (membership_predictions.data.cpu().numpy() > 0.5) == membership_labels.data.cpu().numpy()) * 100
+                confusion_matrix.update(membership_predictions, membership_labels)
+                accuracy.update(acc, self.attack_batch_size)
+                losses.update(attack_loss.item(), self.attack_batch_size)
+                batch_time.update(time.time() - start_time)
+
+                self.attack_model.to('cpu')
+
+            temp = confusion_matrix.get_confusion_matrix()
+            message = f'[ Round: {round_number} ' \
+                      f'| Attacker Test ' \
+                      f'| Class: {data_class}' \
+                      f'| Time: {batch_time.avg:.2f}s ' \
+                      f'| Loss: {losses.avg:.5f} ' \
+                      f'| Acc: {accuracy.avg:.2f}% ]' \
+                      f'| Conf Matrix: TP:{temp[0]}' \
+                      f' FP:{temp[1]}' \
+                      f' TN:{temp[2]}' \
+                      f' FN:{temp[3]} ]'
+            logging.info(message)
         self.model.to("cpu")
