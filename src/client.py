@@ -67,12 +67,7 @@ class Client(object):
 
         # Always declare optimizer after model is send to device
         # Otherwise it won't learn at all
-        self.optimizer = optimizers.__dict__[self.optimizer_name](
-            params=self.model.parameters(),
-            lr=self.learning_rate,
-            momentum=self.momentum,
-            weight_decay=self.weight_decay
-        )
+
         data_size = len(self.training_dataloader.dataset)
 
         for e in range(self.number_of_epochs):

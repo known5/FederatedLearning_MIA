@@ -135,6 +135,7 @@ class AttackModel(nn.Module):
             temp2 = self.loss_component(loss_values[model_input])
             temp3 = self.gradient_component(gradients[model_input])
 
+            temp1 = torch.unsqueeze(temp1, -1)
             if model_input == 0:
                 x = torch.cat((temp, temp1, temp2, temp3), dim=1)
             else:

@@ -187,39 +187,40 @@ class CentralServer(object):
 
         batch_time = AverageMeter()
         losses = AverageMeter()
-        accuracy = AverageMeter()
 
+        data_size = len(self.global_test_dataloader.dataset)
         correct = 0
-        total = 0
 
-        start_time = time.time()
         message = f'[ Round: {round_number} | Global Model Eval started ]'
         logging.info(message)
 
         with torch.no_grad():
-            for batch_idx, (data, labels) in enumerate(self.global_test_dataloader):
+            start_time = time.time()
+            for data, labels in self.global_test_dataloader:
+                # Transfer data to device
                 data, labels = data.float().to(self.device), labels.long().to(self.device)
-                outputs = self.model(data)
-                loss = self.loss_function(outputs, labels)
 
+                # Do a forward pass through the network to get prediction values and update loss metric.
+                outputs = self.model(data)
+                losses.update(self.loss_function(outputs, labels))
+
+                # Compare predictions to labels and get accuracy score.
                 _, predicted = torch.max(outputs.data, 1)
-                total += labels.size(0)
                 correct += (predicted == labels).sum().item()
 
                 # Update loss, accuracy and run_time metrics
-                losses.update(loss.item())
-                accuracy.update(correct, self.batch_size)
                 batch_time.update(time.time() - start_time)
 
-            # Create and log message about training
+            # Create and log message about test
+            accuracy = (correct / data_size) * 100
             message = f'[ Round: {round_number} ' \
                       f'| Time: {batch_time.avg:.2f}s ' \
                       f'| Loss: {losses.avg:.5f}' \
-                      f'| Accuracy: ({correct}/{total})={(100 * correct / total):.2f}% ]'
+                      f'| Accuracy: ({correct}/{data_size})={accuracy:.2f}% ]'
             logging.info(message)
         self.model.to("cpu")
 
-        return losses.avg, accuracy.avg
+        return losses.avg, accuracy
 
     def perform_experiment(self):
         """ Ja hier moet dus documentatie """

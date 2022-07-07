@@ -124,7 +124,6 @@ class Attacker(Client):
             data_loader = zip(temp_data_loader, temp_data_loader_2)
             for (member_input, member_target), (non_member_input, non_member_target) in data_loader:
                 # Pre-define variables to use.
-                gradients = torch.zeros(0)
                 model_outputs = []
                 loss_values = []
                 model_gradients = []
@@ -202,7 +201,7 @@ class Attacker(Client):
                 one_hot_labels = one_hot_labels.float().to(self.device)
 
                 # Get membership predictions
-                membership_predictions = self.attack_model(model_outputs, one_hot_labels, loss_values, gradients)
+                membership_predictions = self.attack_model(model_outputs, one_hot_labels, loss_values, model_gradients)
 
                 # Change labels of the data for binary attack classification
                 member_target = torch.Tensor([1 for _ in member_target])
