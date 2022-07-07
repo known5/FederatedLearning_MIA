@@ -31,15 +31,36 @@ if __name__ == '__main__':
 
     # create date string for unique file_naming
     date_string = log_config['log_path'] \
-        + str(datetime.now().month) + '_' \
-        + str(datetime.now().day) + '/'
+                  + str(datetime.now().month) + '_' \
+                  + str(datetime.now().day) + '/'
 
     # make directory per day for log files
     if not os.path.exists(date_string):
         os.makedirs(date_string)
 
+    # create target model dir if not exists
+    if not os.path.exists(experiment_config['model_path']):
+        os.makedirs(experiment_config['model_path'])
+
+    # Create log filename
+    log_filename = date_string + file_number
+    if experiment_config['train_model'] > 0:
+        number_of_clients = training_config['number_of_clients']
+        training_rounds = training_config['training_rounds']
+        batch_size = training_config['batch_size']
+        learning_rate = training_config['learning_rate']
+        log_filename += f'Target_training_clients_{number_of_clients}' \
+                        f'_rounds_{training_rounds}' \
+                        f'_batch_{batch_size}' \
+                        f'_lr_{learning_rate}'
+        if training_config['client_data_overlap'] > 0:
+            overlapsize = training_config['if_overlap_client_dataset_size']
+            log_filename += f'_overlap_yes_overlapsize_{overlapsize}'
+        else:
+            log_filename += f'_overlap_no'
+
     # Set op logger
-    logging.basicConfig(filename=date_string + file_number,
+    logging.basicConfig(filename=log_filename,
                         filemode='w',
                         level=getattr(logging, log_config['log_level']))
 
