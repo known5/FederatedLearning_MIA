@@ -15,7 +15,6 @@ class Client(object):
         self.__model = None
         self.loss_function = get_torch_loss_function(training_param['loss_function'])
         self.number_of_epochs = training_param['epochs']
-        self.model = model
         self.optimizer_name = training_param['optimizer']
         self.learning_rate = training_param['learning_rate']
         self.momentum = training_param['momentum']
@@ -29,12 +28,7 @@ class Client(object):
         self.test_data = None
         self.training_dataloader = None
         self.testing_dataloader = None
-        self.optimizer = optimizers.__dict__[self.optimizer_name](
-            params=self.model.parameters(),
-            lr=self.learning_rate,
-            momentum=self.momentum,
-            weight_decay=self.weight_decay
-        )
+
         self.local_results = {"loss": [], "accuracy": []}
 
     @property
@@ -45,6 +39,12 @@ class Client(object):
     @model.setter
     def model(self, model):
         """ Ja hier moet dus documentatie """
+        self.optimizer = optimizers.__dict__[self.optimizer_name](
+            params=model.parameters(),
+            lr=self.learning_rate,
+            momentum=self.momentum,
+            weight_decay=self.weight_decay
+        )
         self.__model = model
 
     def load_data(self, training_data):
@@ -54,7 +54,7 @@ class Client(object):
                                               batch_size=self.batch_size,
                                               shuffle=True,
                                               num_workers=2,
-                                              pin_memory=False
+                                              pin_memory=True
                                               )
 
         message = f'Client {self.client_id} loaded datasets successfully'
@@ -64,9 +64,6 @@ class Client(object):
         """ Ja hier moet dus documentatie """
         self.model.train()
         self.model.to(self.device)
-
-        # Always declare optimizer after model is send to device
-        # Otherwise it won't learn at all
 
         data_size = len(self.training_dataloader.dataset)
 

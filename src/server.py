@@ -93,7 +93,7 @@ class CentralServer(object):
         if self.observed_target_models is not []:
             for index in self.observed_target_models:
                 filename = f'epoch_{index}_main_clients_{self.number_of_clients}'
-                self.observed_target_models.append(load_target_model(self.model_path, filename))
+                self.target_models_for_inference.append(load_target_model(self.model_path, filename))
 
         message = 'Completed main server startup'
         logging.debug(message)
@@ -108,7 +108,8 @@ class CentralServer(object):
                                         training_param,
                                         attack_param,
                                         device=self.device,
-                                        target_train_model=copy.deepcopy(self.model)
+                                        target_train_model=copy.deepcopy(self.model),
+                                        number_of_observed_models=len(self.observed_target_models)
                                         )
                                )
                 attacker_is_generated = True
@@ -229,6 +230,12 @@ class CentralServer(object):
         for index in range(self.number_of_training_rounds):
             index += 1
             message = f'[ Round: {index} | Started! ]'
+
+            # Adjust the learning rates at given epochs
+            if index in [50, 100]:
+                for client in self.clients:
+                    client.learning_rate *= 0.1
+
             logging.info(message)
             # If checked, do training cycle
             if self.train_model > 0 and index % self.train_model == 0:
@@ -255,10 +262,10 @@ class CentralServer(object):
 
             # If checked, perform passive MIA during each round.
             if self.do_passive_attack > 0 and index % self.do_passive_attack == 0:
-                attacker.train_attack(index, self.observed_target_models)
+                attacker.train_attack(index, self.target_models_for_inference)
 
                 if self.eval_attack > 0 and index % self.eval_attack == 0:
-                    attacker.test_attack(index, self.observed_target_models)
+                    attacker.test_attack(index, self.target_models_for_inference)
 
                 if self.save_attack_model > 0 and index % self.save_attack_model == 0:
                     is_best = (round_accuracy >= max(self.attack_results['accuracy']))
