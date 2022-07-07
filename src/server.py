@@ -283,7 +283,9 @@ class CentralServer(object):
                         'acc': round_accuracy,
                         'best_acc': is_best
                     }, is_best=is_best,
-                        filename=f'epoch_{index}_main_clients_{self.number_of_clients}',
+                        filename=f'epoch_{index}'
+                                 f'_main_clients_{self.number_of_clients}'
+                                 f'_batch_{self.batch_size}',
                         checkpoint=self.model_path
                     )
 
@@ -303,7 +305,9 @@ class CentralServer(object):
                         'best_acc': is_best,
                         'optimizer': attacker.attack_optimizer.state.dict()
                     }, is_best=is_best,
-                        filename=f'epoch_{index}_attack_clients_{self.number_of_clients}',
+                        filename=f'_epoch_{index}'
+                                 f'_attack_clients_{self.number_of_clients}'
+                                 f'_batch_{attacker.attack_batch_size}',
                         checkpoint=self.attack_model_path
                     )
 
