@@ -118,14 +118,14 @@ class Attacker(Client):
                                           batch_size=self.attack_batch_size,
                                           shuffle=True,
                                           num_workers=2,
-                                          pin_memory=False
+                                          pin_memory=True
                                           )
 
             temp_data_loader_2 = DataLoader(non_member,
                                             batch_size=self.attack_batch_size,
                                             shuffle=True,
                                             num_workers=2,
-                                            pin_memory=False
+                                            pin_memory=True
                                             )
 
             data_loader = zip(temp_data_loader, temp_data_loader_2)

@@ -55,7 +55,7 @@ class Client(object):
                                               batch_size=self.batch_size,
                                               shuffle=True,
                                               num_workers=2,
-                                              pin_memory=False
+                                              pin_memory=True
                                               )
 
         message = f'Client {self.client_id} loaded datasets successfully'
