@@ -152,8 +152,8 @@ class Attacker(Client):
                     #
                     model.eval()
                     model.to(self.device)
-                    self.optimizer = optimizers.__dict__[self.optimizer_name](
-                        params=self.model.parameters(),
+                    optimizer = optimizers.__dict__[self.optimizer_name](
+                        params=model.parameters(),
                         lr=self.learning_rate,
                         momentum=self.momentum,
                         weight_decay=self.weight_decay
@@ -171,7 +171,7 @@ class Attacker(Client):
                     gradients = torch.zeros(0)
                     for index in range(predictions.size(0)):
                         loss = self.loss_function(predictions[index].view([1, -1]), labels[index].view([-1]))
-                        self.optimizer.zero_grad()
+                        optimizer.zero_grad()
                         if index == (predictions.size(0)) - 1:
                             loss.backward(retain_graph=False)
                         else:

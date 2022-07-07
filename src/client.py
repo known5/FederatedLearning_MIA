@@ -12,7 +12,7 @@ class Client(object):
 
     def __init__(self, client_id, training_param, device, model):
         """ Ja hier moet dus documentatie """
-        self.__model = None
+        self.__model = model
         self.loss_function = get_torch_loss_function(training_param['loss_function'])
         self.number_of_epochs = training_param['epochs']
         self.optimizer_name = training_param['optimizer']
