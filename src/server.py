@@ -150,7 +150,7 @@ class CentralServer(object):
 
             message = f"Splitting dataset of size {len(training_data)}" \
                       f" into {self.number_of_clients}" \
-                      f" parts of size {training_data_split}..."
+                      f" parts of size {len(training_data_split[0])}..."
             logging.info(message)
 
             # send data to clients for training.
@@ -175,7 +175,7 @@ class CentralServer(object):
 
             message = f"Splitting dataset of size {len(training_data)}" \
                       f" into {self.number_of_clients}" \
-                      f" parts of size {training_data_split}..."
+                      f" parts of size {len(training_data_split[0])}..."
             logging.info(message)
 
             message = 'Distributed data among clients'
