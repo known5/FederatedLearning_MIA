@@ -173,6 +173,11 @@ class CentralServer(object):
                 training_data_split.append(temp_subset)
                 np.random.shuffle(temp_indices)
 
+            message = f"Splitting dataset of size {len(training_data)}" \
+                      f" into {self.number_of_clients}" \
+                      f" parts of size {training_data_split}..."
+            logging.info(message)
+
             message = 'Distributed data among clients'
             logging.debug(message)
 
