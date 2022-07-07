@@ -14,7 +14,6 @@ class Client(object):
         """ Ja hier moet dus documentatie """
         self.__model = model
         self.loss_function = get_torch_loss_function(training_param['loss_function'])
-        self.number_of_epochs = training_param['epochs']
         self.optimizer_name = training_param['optimizer']
         self.learning_rate = training_param['learning_rate']
         self.momentum = training_param['momentum']
@@ -67,43 +66,41 @@ class Client(object):
 
         data_size = len(self.training_dataloader.dataset)
 
-        for e in range(self.number_of_epochs):
-            batch_time = AverageMeter()
-            losses = AverageMeter()
+        batch_time = AverageMeter()
+        losses = AverageMeter()
 
-            start_time = time.time()
-            correct = 0
+        start_time = time.time()
+        correct = 0
 
-            for data, labels in self.training_dataloader:
-                # Transfer data to CPU or GPU and set gradients to zero for performance.
-                data, labels = data.float().to(self.device), labels.long().to(self.device)
-                self.optimizer.zero_grad()
+        for data, labels in self.training_dataloader:
+            # Transfer data to CPU or GPU and set gradients to zero for performance.
+            data, labels = data.float().to(self.device), labels.long().to(self.device)
+            self.optimizer.zero_grad()
 
-                # Do a forward pass through the network to get prediction values and update loss metric.
-                outputs = self.model(data)
-                loss = self.loss_function(outputs, labels)
+            # Do a forward pass through the network to get prediction values and update loss metric.
+            outputs = self.model(data)
+            loss = self.loss_function(outputs, labels)
 
-                # Do a backward pass through the network to get the gradients
-                # and then use the optimizer to update the weights.
-                loss.backward()
-                self.optimizer.step()
+            # Do a backward pass through the network to get the gradients
+            # and then use the optimizer to update the weights.
+            loss.backward()
+            self.optimizer.step()
 
-                # Compare predictions to labels and get accuracy score.
-                _, predicted = torch.max(outputs.data, 1)
-                correct += (predicted == labels).sum().item()
+            # Compare predictions to labels and get accuracy score.
+            _, predicted = torch.max(outputs.data, 1)
+            correct += (predicted == labels).sum().item()
 
-                # Update loss, accuracy and run_time metrics
-                losses.update(loss.item())
-                batch_time.update(time.time() - start_time)
+            # Update loss, accuracy and run_time metrics
+            losses.update(loss.item())
+            batch_time.update(time.time() - start_time)
 
-            message = f'[ Round: {round_number} ' \
-                      f'| Local Train ' \
-                      f'| Client: {self.client_id} ' \
-                      f'| Epoch: {e + 1} ' \
-                      f'| Time: {batch_time.avg:.2f}s ' \
-                      f'| Loss: {losses.avg:.5f} ' \
-                      f'| Tr_Acc ({correct}/{data_size})={((correct / data_size) * 100):.2f}% ]'
-            logging.info(message)
+        message = f'[ Round: {round_number} ' \
+                  f'| Local Train ' \
+                  f'| Client: {self.client_id} ' \
+                  f'| Time: {batch_time.avg:.2f}s ' \
+                  f'| Loss: {losses.avg:.5f} ' \
+                  f'| Tr_Acc ({correct}/{data_size})={((correct / data_size) * 100):.2f}% ]'
+        logging.info(message)
         self.model.to("cpu")
 
     def test(self, round_number):

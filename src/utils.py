@@ -6,10 +6,7 @@ import torch.nn as nn
 import torch.utils.data as data_util
 import torchvision
 import torchvision.datasets as datasets
-import torchvision.models as models
 import torchvision.transforms as transforms
-
-from src.models import AlexNet
 
 
 class ConfusionMatrix(object):
@@ -54,40 +51,26 @@ def get_duration(start_time):
     return "{:0>2}:{:0>2}:{:05.2f}".format(int(hours), int(minutes), seconds)
 
 
-def load_model(model_name, is_local_model):
-    """ Ja hier moet dus documentatie """
-    if is_local_model:
-        model = AlexNet()
-    else:
-        if not hasattr(models, model_name):
-            error_message = f"...model \"{model_name}\" is not supported or cannot be found in TorchVision models!"
-            logging.error(error_message)
-            raise AttributeError(error_message)
-        else:
-            model = models.__dict__[model_name]
-    return model
-
-
 def calculate_mean_std_(data_path, data_name):
     train_set = datasets.ImageFolder(data_path + data_name + '/train', transform=transforms.ToTensor())
 
     loader = data_util.DataLoader(train_set, batch_size=8)
 
-    nimages = 0
+    n_images = 0
     mean = 0.
     std = 0.
     for batch, _ in loader:
         # Rearrange batch to be the shape of [B, C, W * H]
         batch = batch.view(batch.size(0), batch.size(1), -1)
         # Update total number of images
-        nimages += batch.size(0)
+        n_images += batch.size(0)
         # Compute mean and std here
         mean += batch.mean(2).sum(0)
         std += batch.std(2).sum(0)
 
     # Final step
-    mean /= nimages
-    std /= nimages
+    mean /= n_images
+    std /= n_images
 
     print(mean)
     print(std)

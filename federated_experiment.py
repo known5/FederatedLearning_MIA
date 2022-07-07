@@ -1,23 +1,24 @@
+import logging
 import os
 import time
-import yaml
-import torch
-import logging
-from src.utils import get_duration
-from src.server import CentralServer
 from datetime import datetime
 
+import numpy.random
+import torch
+import yaml
+
+from src.server import CentralServer
+from src.utils import get_duration
+
 if __name__ == '__main__':
-    start_time = time.time()
     # read configuration file
     with open('./config.yaml') as c:
         configs = list(yaml.load_all(c, Loader=yaml.FullLoader))
     experiment_config = configs[0]["experiment_config"]
     attack_config = configs[1]['attack_settings']
     training_config = configs[2]["training_settings"]
-    model_config = configs[3]["model_settings"]
-    data_config = configs[4]["data_settings"]
-    log_config = configs[5]["LOG_settings"]
+    data_config = configs[3]["data_settings"]
+    log_config = configs[4]["LOG_settings"]
 
     # read persistent file to create separate log_files
     with open('./log/persistent.txt', 'r', encoding="utf-8") as f:
@@ -42,27 +43,29 @@ if __name__ == '__main__':
                         filemode='w',
                         level=getattr(logging, log_config['log_level']))
 
-    message = "Experiment started!"
-    logging.info(msg=message)
-
     # Setup device
     device = "cuda" if torch.cuda.is_available() and experiment_config['device'] == "cuda" else "cpu"
 
     # set seeds
-    seed = experiment_config['seed']
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
+    for seed in experiment_config['seed']:
+        start_time = time.time()
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+        numpy.random.seed(seed)
 
-    # Setup Main Server with given parameters
-    main_server = CentralServer(experiment_config,
-                                attack_config,
-                                data_config,
-                                training_config,
-                                model_config
-                                )
-    main_server.start_up()
-    # Perform main experiment
-    main_server.perform_experiment()
-    # Log scalars for tensorboard.
-    message = f"[ Total runtime: ... {str(get_duration(start_time))} ]"
-    logging.info(message)
+        # Setup Main Server with given parameters
+        main_server = CentralServer(experiment_config,
+                                    attack_config,
+                                    data_config,
+                                    training_config
+                                    )
+        main_server.start_up()
+
+        # Log start message.
+        message = f"[ Experiment with SEED: {seed} started! ]"
+        logging.info(msg=message)
+        # Perform main experiment
+        main_server.perform_experiment()
+
+        message = f"[ Total runtime: ... {str(get_duration(start_time))} for seed: {seed} ]"
+        logging.info(message)

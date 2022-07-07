@@ -40,13 +40,11 @@ class Attacker(Client):
          """
         super().__init__(client_id, local_data, device, target_train_model)
         self.attack_optimizer = None
-        self.attack_epochs = attack_data['attack_epochs']
         self.eval_attack = attack_data['eval_attack']
         self.attack_batch_size = attack_data['attack_batch_size']
         self.one_hot_encoding = create_ohe(self.model)
 
         self.attack_data_distribution = attack_data['attack_data_distribution']
-        self.attack_data_overlap = attack_data['overlap_with_single_target']
         self.attack_loss_function = get_torch_loss_function(attack_data['attack_loss_function'])
         self.attack_optimizer_name = attack_data['attack_optimizer']
 
@@ -66,7 +64,7 @@ class Attacker(Client):
             lr=0.0001
         )
 
-    def load_attack_data(self, training_data, test_data):
+    def load_attack_data(self, training_data, non_member_data):
         """ Ja hier moet dus documentatie """
         logging.debug(' Loading datasets for attacker')
         # Get distributions for attack data from server.
@@ -75,28 +73,36 @@ class Attacker(Client):
         self.class_attack_data_subsets = []
         self.class_test_data_subsets = []
 
-        for target in range(self.number_of_classes):
-            low, high = target * 100, (target + 1) * 100
-            amount_per_class = distribution[0] // self.number_of_classes
-            training_member_index = torch.randint(low=low, high=high, size=(1, amount_per_class))[0].tolist()
-            train_member_set = torch.utils.data.Subset(training_data, training_member_index)
+        message = f'[ Attack data distribution: {distribution} ]'
+        logging.info(message)
 
+        training_data_remainder = len(training_data) - (distribution[0] + distribution[2])
+        length_split = [distribution[0], distribution[2], training_data_remainder]
+        member_data = torch.utils.data.random_split(training_data, length_split)
+
+        for target in range(self.number_of_classes):
+            # Set the boundaries for picking samples from the right classes
             low, high = target * 100, (target + 1) * 100
-            amount_per_class = distribution[1] // self.number_of_classes
-            training_non_member_index = torch.randint(low=low, high=high, size=(1, amount_per_class))[0].tolist()
-            train_non_member_set = torch.utils.data.Subset(test_data, training_non_member_index)
+
+            #
+            training_member_index = [ind for ind, (x, y) in enumerate(member_data[0]) if y == target]
+            training_non_member_index = torch.randint(low=low,
+                                                      high=high,
+                                                      size=(1, len(training_member_index)))[0].tolist()
+
+            #
+            test_member_index = [ind for ind, (x, y) in enumerate(member_data[1]) if y == target]
+            test_non_member_index = torch.randint(low=low,
+                                                  high=high,
+                                                  size=(1, len(test_member_index)))[0].tolist()
+
+            # Create the subsets for this class
+            train_member_set = torch.utils.data.Subset(member_data[0], training_member_index)
+            train_non_member_set = torch.utils.data.Subset(non_member_data, training_non_member_index)
+            test_member_set = torch.utils.data.Subset(member_data[1], test_member_index)
+            test_non_member_set = torch.utils.data.Subset(non_member_data, test_non_member_index)
 
             self.class_attack_data_subsets.append((train_member_set, train_non_member_set))
-            low, high = target * 1000, (target + 1) * 1000
-            amount_per_class = distribution[2] // self.number_of_classes
-            test_member_index = torch.randint(low=low, high=high, size=(1, amount_per_class))[0].tolist()
-            test_member_set = torch.utils.data.Subset(training_data, test_member_index)
-
-            low, high = target * 100, (target + 1) * 100
-            amount_per_class = distribution[3] // self.number_of_classes
-            test_non_member_index = torch.randint(low=low, high=high, size=(1, amount_per_class))[0].tolist()
-            test_non_member_set = torch.utils.data.Subset(test_data, test_non_member_index)
-
             self.class_test_data_subsets.append((test_member_set, test_non_member_set))
 
         logging.debug('loaded attacker data successfully')

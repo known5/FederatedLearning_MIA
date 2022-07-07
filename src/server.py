@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from src.attacker import Attacker
 from src.client import Client
 from src.models import AlexNet
-from src.utils import load_dataset, load_model, AverageMeter, get_torch_loss_function
+from src.utils import load_dataset, AverageMeter, get_torch_loss_function
 
 
 def save_checkpoint(state, is_best, checkpoint='checkpoint', filename='checkpoint.pth.tar'):
@@ -41,7 +41,7 @@ class CentralServer(object):
     Ja hier moet dus documentatie
     """
 
-    def __init__(self, experiment_param, attack_param, data_param, training_param, model_param):
+    def __init__(self, experiment_param, attack_param, data_param, training_param):
         """ Ja hier moet dus documentatie """
         self.device = experiment_param['device']
         self.train_model = experiment_param['train_model']
@@ -52,22 +52,25 @@ class CentralServer(object):
 
         self.attack_param = attack_param
         self.do_passive_attack = attack_param['passive_attack']
+        self.do_active_attack = attack_param['active_attack']
         self.save_attack_model = attack_param['save_attack_model']
+        self.attack_data_overlap = attack_param['attack_data_target_overlap_with']
         self.observed_target_models = attack_param['observed_target_models']
         self.attack_model_path = attack_param['attack_model_path']
         self.eval_attack = attack_param['eval_attack']
 
         self.dataset_path = data_param['data_path']
         self.dataset_name = data_param['dataset_name']
-        self.is_idd = data_param['iid']
+        self.number_of_classes = data_param['number_of_classes']
 
         self.training_param = training_param
         self.number_of_clients = training_param['number_of_clients']
         self.number_of_training_rounds = training_param['training_rounds']
         self.loss_function = get_torch_loss_function(training_param['loss_function'])
         self.batch_size = training_param['batch_size']
+        self.client_data_overlap = training_param['client_data_overlap']
+        self.if_overlap_client_dataset_size = training_param['if_overlap_client_dataset_size']
 
-        self.model_param = model_param
         self.results = {"loss": [], "accuracy": [0.0]}
         self.attack_results = {"loss": [], "accuracy": [0.0]}
 
@@ -80,17 +83,17 @@ class CentralServer(object):
     def start_up(self):
         """ Ja hier moet dus documentatie """
 
-        self.model = load_model(self.model_param['name'],
-                                self.model_param['is_local_model'])
+        self.model = AlexNet(self.number_of_classes)
+
         self.clients = self.generate_clients(self.training_param, self.attack_param)
         self.load_datasets(self.dataset_name,
                            self.dataset_path,
-                           self.number_of_clients,
-                           self.is_idd)
+                           self.number_of_clients
+                           )
 
         self.share_model_with_clients()
 
-        if self.observed_target_models is not []:
+        if self.do_passive_attack > 0:
             for index in self.observed_target_models:
                 filename = f'epoch_{index}_main_clients_{self.number_of_clients}'
                 self.target_models_for_inference.append(load_target_model(self.model_path, filename))
@@ -124,7 +127,7 @@ class CentralServer(object):
 
         return clients
 
-    def load_datasets(self, data_name, data_path, number_of_clients, is_iid):
+    def load_datasets(self, data_name, data_path, number_of_clients):
         """ Ja hier moet dus documentatie """
         # load correct dataset from torchvision
         training_data, test_data = load_dataset(data_path, data_name)
@@ -135,25 +138,49 @@ class CentralServer(object):
                                                  pin_memory=True
                                                  )
 
-        # randomly split training data so each client has its own data set.
-        training_data_length = len(training_data) // number_of_clients
-        length_split = [training_data_length for _ in range(self.number_of_clients)]
-        training_data_split = torch.utils.data.random_split(training_data, length_split)
+        if self.client_data_overlap > 0:
+            # randomly split training data so each client has its own separate data set.
+            subset_length = len(training_data) // number_of_clients
+            training_data_split = [subset_length for _ in range(self.number_of_clients)]
+            remainder = len(training_data) % training_data_split[0]
+            if not remainder == 0:
+                training_data_split.append(remainder)
+            training_data_split = torch.utils.data.random_split(training_data, training_data_split)
 
-        message = f"Splitting dataset of size {len(training_data)}" \
-                  f" into {self.number_of_clients}" \
-                  f" parts of size {training_data_length}..."
-        logging.info(message)
+            message = f"Splitting dataset of size {len(training_data)}" \
+                      f" into {self.number_of_clients}" \
+                      f" parts of size {training_data_split}..."
+            logging.info(message)
 
-        # send data to clients for training.
-        for k, client in enumerate(self.clients):
-            client.load_data(training_data_split[k])
-        message = 'Distributed data among clients'
-        logging.debug(message)
+            # send data to clients for training.
+            for k, client in enumerate(self.clients):
+                client.load_data(training_data_split[k])
+            message = 'Distributed data among clients'
+            logging.debug(message)
+
+        else:
+            # Give each client a fixed amount of samples, randomly drawn from the entire dataset. overlap may occur
+            training_data_split = []
+            for client in self.clients:
+                shuffled_index = torch.randint(high=len(training_data), size=(1, self.if_overlap_client_dataset_size))
+                temp_subset = torch.utils.data.Subset(training_data, shuffled_index)
+                client.load_data(temp_subset)
+                training_data_split.append(temp_subset)
+            message = 'Distributed data among clients'
+            logging.debug(message)
 
         if self.do_passive_attack > 0:
-            # Send data files to attacker for inference
-            self.clients[0].load_attack_data(training_data, test_data)
+            # If the condition below is met, sample member data from all clients
+            if isinstance(self.attack_data_overlap, str) and self.attack_data_overlap == 'all':
+                # Send data files to attacker for inference
+                self.clients[0].load_attack_data(training_data, test_data)
+            else:
+                # Only provide member samples for 1 or more clients.
+                attack_data = training_data_split[0]
+                for index in range(1, self.attack_data_overlap):
+                    attack_data = torch.utils.data.ConcatDataset([attack_data, training_data_split[index]])
+                    # Send data files to attacker for inference
+                self.clients[0].load_attack_data(attack_data, test_data)
 
     def share_model_with_clients(self):
         """ Ja hier moet dus documentatie """
