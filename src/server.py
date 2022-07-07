@@ -4,6 +4,7 @@ import os
 import shutil
 import time
 
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
@@ -161,11 +162,17 @@ class CentralServer(object):
         else:
             # Give each client a fixed amount of samples, randomly drawn from the entire dataset. overlap may occur
             training_data_split = []
+            temp_indices = np.arange(len(training_data))
+            np.random.shuffle(temp_indices)
+
             for client in self.clients:
-                shuffled_index = torch.randint(high=len(training_data), size=(1, self.if_overlap_client_dataset_size))
-                temp_subset = torch.utils.data.Subset(training_data, shuffled_index)
+                temp_subset = []
+                for i in range(self.if_overlap_client_dataset_size):
+                    temp_subset.append(training_data[temp_indices[i]])
                 client.load_data(temp_subset)
                 training_data_split.append(temp_subset)
+                np.random.shuffle(temp_indices)
+
             message = 'Distributed data among clients'
             logging.debug(message)
 
