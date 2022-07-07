@@ -188,13 +188,14 @@ class Attacker(Client):
                 self.attack_model.to(self.device)
 
                 # Change labels of the data for binary attack classification
-                member_target = torch.Tensor([1 for _ in member_target])
-                non_member_target = torch.Tensor([0 for _ in non_member_target])
+                member_target = torch.Tensor([1 for _ in member_input])
+                non_member_target = torch.Tensor([0 for _ in non_member_input])
                 membership_labels = torch.cat((member_target, non_member_target))
                 membership_labels = torch.unsqueeze(membership_labels, -1).data.float().to(self.device)
 
                 # Get membership predictions
                 membership_predictions = self.attack_model(model_outputs, one_hot_labels, loss_values, model_gradients)
+                print(membership_predictions)
                 # Calculate the loss of attack model
                 attack_loss = self.attack_loss_function(membership_predictions, membership_labels)
 

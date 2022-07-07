@@ -229,11 +229,17 @@ class CentralServer(object):
         for index in range(self.number_of_training_rounds):
             index += 1
             message = f'[ Round: {index} | Started! ]'
+
+            # Adjust the learning rates at given epochs
+            if index in [50, 100]:
+                for client in self.clients:
+                    client.learning_rate *= 0.1
+
             logging.info(message)
             # If checked, do training cycle
             if self.train_model > 0 and index % self.train_model == 0:
-                self.do_training(index)
-                self.aggregate_model()
+                # self.do_training(index)
+                # self.aggregate_model()
                 self.share_model_with_clients()
                 # If checked, perform global model evaluation every round.
                 if self.do_global_eval > 0 and index % self.do_global_eval == 0:

@@ -159,8 +159,7 @@ class AutoEncoder(nn.Module):
             nn.ReLU(),
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(64, 1),
-            nn.Sigmoid()
+            nn.Linear(64, 1)
         )
 
     def forward(self, x):

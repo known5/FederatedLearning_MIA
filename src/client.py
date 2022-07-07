@@ -15,7 +15,6 @@ class Client(object):
         self.__model = None
         self.loss_function = get_torch_loss_function(training_param['loss_function'])
         self.number_of_epochs = training_param['epochs']
-        self.model = model
         self.optimizer_name = training_param['optimizer']
         self.learning_rate = training_param['learning_rate']
         self.momentum = training_param['momentum']
@@ -24,17 +23,13 @@ class Client(object):
         self.batch_size = training_param['batch_size']
         self.client_id = client_id
         self.device = device
+        self.model = model
 
         self.training_data = None
         self.test_data = None
         self.training_dataloader = None
         self.testing_dataloader = None
-        self.optimizer = optimizers.__dict__[self.optimizer_name](
-            params=self.model.parameters(),
-            lr=self.learning_rate,
-            momentum=self.momentum,
-            weight_decay=self.weight_decay
-        )
+
         self.local_results = {"loss": [], "accuracy": []}
 
     @property
@@ -45,6 +40,12 @@ class Client(object):
     @model.setter
     def model(self, model):
         """ Ja hier moet dus documentatie """
+        self.optimizer = optimizers.__dict__[self.optimizer_name](
+            params=model.parameters(),
+            lr=self.learning_rate,
+            momentum=self.momentum,
+            weight_decay=self.weight_decay
+        )
         self.__model = model
 
     def load_data(self, training_data):
@@ -65,14 +66,6 @@ class Client(object):
         self.model.train()
         self.model.to(self.device)
 
-        # Always declare optimizer after model is send to device
-        # Otherwise it won't learn at all
-        self.optimizer = optimizers.__dict__[self.optimizer_name](
-            params=self.model.parameters(),
-            lr=self.learning_rate,
-            momentum=self.momentum,
-            weight_decay=self.weight_decay
-        )
         data_size = len(self.training_dataloader.dataset)
 
         for e in range(self.number_of_epochs):
