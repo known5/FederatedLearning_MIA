@@ -1,27 +1,27 @@
 experiment_config:
   seed: [ 42 ]
-  device: "cuda"
+  device: "cpu"
   train_model: 0
   local_eval: 0
   global_eval: 0
   save_model: 0
-  model_path: './models/target_clients_1/'
+  model_path: './models/seed_42/target_4/'
 ---
 attack_settings:
   passive_attack: 1
   active_attack: 0
-  eval_attack: 0
+  eval_attack: 1
   save_attack_model: 0
   attack_data_target_overlap_with: 'all'
   attack_batch_size: 64
   attack_loss_function: 'MSELoss'
   attack_optimizer: 'Adam'
-  attack_data_distribution: [ 1000, 1000, 2000, 2000 ]
-  observed_target_models: [ 100, 150, 200, 250, 300 ]
+  attack_data_distribution: [ 1000, 1000, 1000, 1000 ]
+  observed_target_models: [ 100 ]
   attack_model_path: './models/attack/'
 ---
 training_settings:
-  number_of_clients: 20
+  number_of_clients: 4
   client_data_overlap: 1
   if_overlap_client_dataset_size: 30000
   training_rounds: 100

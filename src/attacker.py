@@ -192,8 +192,6 @@ class Attacker(Client):
                     temp_gradients = torch.from_numpy(gradients.data.cpu().numpy()).to(self.device)
                     model_gradients.append(temp_gradients.requires_grad_(True))
                     model.to('cpu')
-                # remove data from GPU to free up memory
-                data.to('cpu')
 
                 # Get the predictions for the membership classification
                 self.attack_model.train()
@@ -207,7 +205,6 @@ class Attacker(Client):
 
                 # Get membership predictions
                 membership_predictions = self.attack_model(model_outputs, one_hot_labels, loss_values, model_gradients)
-                print(membership_predictions)
                 # Calculate the loss of attack model
                 attack_loss = self.attack_loss_function(membership_predictions, membership_labels)
 
@@ -238,7 +235,6 @@ class Attacker(Client):
                       f' TN:{temp[2]}' \
                       f' FN:{temp[3]} ]'
             logging.info(message)
-        self.model.to("cpu")
 
     def test_attack(self, round_number, target_models):
         """ Ja hier moet dus documentatie """
@@ -272,7 +268,6 @@ class Attacker(Client):
 
             data_loader = zip(temp_data_loader, temp_data_loader_2)
             for (member_input, member_target), (non_member_input, non_member_target) in data_loader:
-                gradients = torch.zeros(0)
                 # Load data to device
                 member_input, member_target = member_input.float().to(self.device) \
                     , member_target.long().to(self.device)
@@ -283,7 +278,7 @@ class Attacker(Client):
                     (member_target, non_member_target))
 
                 # Create one-hot encoding of labels, as this has to be done only once.
-                one_hot_labels = one_hot_encoding(labels, self.one_hot_encoding, self.device)
+                one_hot_labels = one_hot_encoding(labels, self.one_hot_encoding, self.device).float()
 
                 model_outputs = []
                 loss_values = []
@@ -326,48 +321,29 @@ class Attacker(Client):
                     model_gradients.append(gradients)
                     model.to('cpu')
 
-                # remove data from GPU to free up memory
-                data.to('cpu')
-
                 # Get the predictions for the membership classification
-                self.attack_model.train()
+                self.attack_model.eval()
                 self.attack_model.to(self.device)
+                with torch.no_grad():
+                    # Get membership predictions
+                    membership_predictions = self.attack_model(model_outputs, one_hot_labels, loss_values,
+                                                               model_gradients)
+                    # Change labels of the data for binary attack classification
+                    member_target = torch.Tensor([1 for _ in member_target])
+                    non_member_target = torch.Tensor([0 for _ in non_member_target])
+                    membership_labels = torch.cat((member_target, non_member_target))
+                    membership_labels = torch.unsqueeze(membership_labels, -1).data.float().to(self.device)
 
-                # Set attack optimizer after sending model to device
-                self.attack_optimizer = optimizers.__dict__[self.optimizer_name](
-                    params=self.model.parameters(),
-                    lr=self.learning_rate,
-                    momentum=self.momentum
-                )
+                    # Calculate the loss of attack model
+                    attack_loss = self.attack_loss_function(membership_predictions, membership_labels)
 
-                self.attack_optimizer.zero_grad()
-
-                # Set all data components to device
-                for component in range(len(target_models)):
-                    model_outputs[component] = model_outputs[component].float().to(self.device)
-                    loss_values[component] = loss_values[component].float().to(self.device)
-                    model_gradients[component] = model_gradients[component].float().to(self.device)
-                one_hot_labels = one_hot_labels.float().to(self.device)
-
-                # Get membership predictions
-                membership_predictions = self.attack_model(model_outputs, one_hot_labels, loss_values, model_gradients)
-
-                # Change labels of the data for binary attack classification
-                member_target = torch.Tensor([1 for _ in member_target])
-                non_member_target = torch.Tensor([0 for _ in non_member_target])
-                membership_labels = torch.cat((member_target, non_member_target))
-                membership_labels = torch.unsqueeze(membership_labels, -1).data.float().to(self.device)
-
-                # Calculate the loss of attack model
-                attack_loss = self.attack_loss_function(membership_predictions, membership_labels)
-
-                # Measure training accuracy and report metrics
-                acc = np.mean(
-                    (membership_predictions.data.cpu().numpy() > 0.5) == membership_labels.data.cpu().numpy()) * 100
-                confusion_matrix.update(membership_predictions, membership_labels)
-                accuracy.update(acc, self.attack_batch_size)
-                losses.update(attack_loss.item(), self.attack_batch_size)
-                batch_time.update(time.time() - start_time)
+                    # Measure training accuracy and report metrics
+                    acc = np.mean(
+                        (membership_predictions.data.cpu().numpy() > 0.5) == membership_labels.data.cpu().numpy()) * 100
+                    confusion_matrix.update(membership_predictions, membership_labels)
+                    accuracy.update(acc, self.attack_batch_size)
+                    losses.update(attack_loss.item(), self.attack_batch_size)
+                    batch_time.update(time.time() - start_time)
 
                 self.attack_model.to('cpu')
 
@@ -383,4 +359,3 @@ class Attacker(Client):
                       f' TN:{temp[2]}' \
                       f' FN:{temp[3]} ]'
             logging.info(message)
-        self.model.to("cpu")

@@ -71,7 +71,7 @@ class Client(object):
 
         start_time = time.time()
         correct = 0
-
+        
         for data, labels in self.training_dataloader:
             # Transfer data to CPU or GPU and set gradients to zero for performance.
             data, labels = data.float().to(self.device), labels.long().to(self.device)
