@@ -96,7 +96,7 @@ class CentralServer(object):
 
         if self.do_passive_attack > 0:
             for index in self.observed_target_models:
-                filename = f'epoch_{index}_main_clients_{self.number_of_clients}'
+                filename = f'epoch_{index}_main_clients_{self.number_of_clients}_batch_{self.batch_size}'
                 self.target_models_for_inference.append(load_target_model(self.model_path, filename))
 
         message = 'Completed main server startup'
@@ -315,7 +315,7 @@ class CentralServer(object):
                         'state_dict': self.clients[0].model.state_dict(),
                         'acc': round_accuracy,
                         'best_acc': is_best,
-                        'optimizer': attacker.attack_optimizer.state.dict()
+                        'optimizer': attacker.attack_optimizer.state_dict()
                     }, is_best=is_best,
                         filename=f'_epoch_{index}'
                                  f'_attack_clients_{self.number_of_clients}'
