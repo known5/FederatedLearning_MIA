@@ -139,7 +139,7 @@ class CentralServer(object):
                                                  pin_memory=True
                                                  )
 
-        if self.client_data_overlap > 0:
+        if self.client_data_overlap == 0:
             # randomly split training data so each client has its own separate data set.
             subset_length = len(training_data) // number_of_clients
             training_data_split = [subset_length for _ in range(self.number_of_clients)]
