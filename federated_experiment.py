@@ -42,6 +42,10 @@ if __name__ == '__main__':
     if not os.path.exists(experiment_config['model_path']):
         os.makedirs(experiment_config['model_path'])
 
+    # create target model dir if not exists
+    if not os.path.exists(attack_config['attack_model_path']):
+        os.makedirs(attack_config['attack_model_path'])
+
     # Create log filename
     log_filename = date_string + file_number
     if experiment_config['train_model'] > 0:
@@ -49,8 +53,15 @@ if __name__ == '__main__':
         training_rounds = training_config['training_rounds']
         batch_size = training_config['batch_size']
         learning_rate = training_config['learning_rate']
-        log_filename += f'Target_training_clients_{number_of_clients}' \
-                        f'_rounds_{training_rounds}' \
+
+        temp = attack_config['active_attack']
+        if temp > 0:
+            log_filename += f'_Active_attack_every_{temp}_target_training_clients_{number_of_clients}'
+
+        else:
+            log_filename += f'_Target_training_clients_{number_of_clients}'
+
+        log_filename += f'_rounds_{training_rounds}' \
                         f'_batch_{batch_size}' \
                         f'_lr_{learning_rate}'
         if training_config['client_data_overlap'] > 0:
@@ -59,8 +70,17 @@ if __name__ == '__main__':
         else:
             log_filename += f'_overlap_no'
 
+    elif attack_config['passive_attack'] > 0:
+        number_of_clients = training_config['number_of_clients']
+        training_rounds = training_config['training_rounds']
+        batch_size = attack_config['attack_batch_size']
+        log_filename += f'_clients_{number_of_clients}' \
+                        f'_rounds_{training_rounds}' \
+                        f'_a_batch_{batch_size}' \
+                        f'_a_lr_{0.0001}'
+
     # Set op logger
-    logging.basicConfig(filename=log_filename,
+    logging.basicConfig(filename=log_filename + '.txt',
                         filemode='w',
                         level=getattr(logging, log_config['log_level']))
 
@@ -69,6 +89,7 @@ if __name__ == '__main__':
 
     # set seeds
     for seed in experiment_config['seed']:
+        print(seed)
         start_time = time.time()
         torch.manual_seed(seed)
         torch.cuda.manual_seed(seed)

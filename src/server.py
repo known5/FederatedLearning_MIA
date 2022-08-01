@@ -270,14 +270,14 @@ class CentralServer(object):
             index += 1
             message = f'[ Round: {index} | Started! ]'
 
-            # Adjust the learning rates at given epochs
-            if index in [50, 100]:
-                for client in self.clients:
-                    client.learning_rate *= 0.1
-
             logging.info(message)
             # If checked, do training cycle
             if self.train_model > 0 and index % self.train_model == 0:
+                # Adjust the learning rates at given epochs
+                if index in [50, 100]:
+                    for client in self.clients:
+                        client.learning_rate *= 0.1
+
                 self.do_training(index)
                 self.aggregate_model()
                 self.share_model_with_clients()
@@ -300,6 +300,10 @@ class CentralServer(object):
                                  f'_batch_{self.batch_size}',
                         checkpoint=self.model_path
                     )
+
+            # If checked, perform gradient ascent learning on the attacker dataset each round.
+            if self.do_active_attack > 0 and index % self.do_passive_attack == 0:
+                attacker.gradient_ascent_attack(index)
 
             # If checked, perform passive MIA during each round.
             if self.do_passive_attack > 0 and index % self.do_passive_attack == 0:

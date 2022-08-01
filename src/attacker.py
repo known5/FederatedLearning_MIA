@@ -1,4 +1,5 @@
 import logging
+import random
 import time
 
 import numpy as np
@@ -7,6 +8,7 @@ import torch.nn.functional as f
 import torch.optim as optimizers
 import torch.utils
 from torch.utils.data import DataLoader
+import itertools
 
 from src.models import AttackModel, get_output_shape_of_last_layer
 from src.utils import AverageMeter, get_torch_loss_function, ConfusionMatrix
@@ -39,7 +41,6 @@ class Attacker(Client):
 
          """
         super().__init__(client_id, local_data, device, target_train_model)
-        self.attack_optimizer = None
         self.eval_attack = attack_data['eval_attack']
         self.attack_batch_size = attack_data['attack_batch_size']
         self.one_hot_encoding = create_ohe(self.model)
@@ -52,6 +53,7 @@ class Attacker(Client):
         self.class_attack_data_subsets = []
         self.class_test_data_subsets = []
         self.number_of_classes = 100
+        self.attack_data_loader = None
 
         # Create Attack model based on the target model.
         self.attack_model = AttackModel(target_model=self.model,
@@ -62,6 +64,12 @@ class Attacker(Client):
         self.attack_optimizer = optimizers.__dict__[self.attack_optimizer_name](
             params=self.attack_model.parameters(),
             lr=0.0001
+        )
+
+        self.active_attack_optimizer = optimizers.__dict__['SGD'](
+            params=self.model.parameters(),
+            maximize=True,
+            lr=0.1
         )
 
     def load_attack_data(self, training_data, non_member_data):
@@ -76,36 +84,95 @@ class Attacker(Client):
         message = f'[ Attack data distribution: {distribution} ]'
         logging.info(message)
 
-        training_data_remainder = len(training_data) - (distribution[0] + distribution[2])
-        length_split = [distribution[0], distribution[2], training_data_remainder]
-        member_data = torch.utils.data.random_split(training_data, length_split)
+        # check is data sizes are correct:
+        for length in distribution:
+            assert length // 100 != 0 and length % 100 == 0
+
+        train_member_length = distribution[0] // 100
+        train_non_member_length = distribution[1] // 100
+        test_member_length = distribution[2] // 100
+        test_non_member_length = distribution[3] // 100
 
         for target in range(self.number_of_classes):
+            # Set index lists to empty list.
+            training_member_index, training_non_member_index, test_member_index, test_non_member_index = [], [], [], []
             # Set the boundaries for picking samples from the right classes
-            low, high = target * 100, (target + 1) * 100
+            low_member, high_member = target * 1000, (target + 1) * 1000
+            low_non_member, high_non_member = target * 100, (target + 1) * 100
 
-            #
-            training_member_index = [ind for ind, (x, y) in enumerate(member_data[0]) if y == target]
-            training_non_member_index = torch.randint(low=low,
-                                                      high=high,
-                                                      size=(1, len(training_member_index)))[0].tolist()
+            random_subset = list(range(low_member, high_member))
+            random.shuffle(random_subset)
 
-            #
-            test_member_index = [ind for ind, (x, y) in enumerate(member_data[1]) if y == target]
-            test_non_member_index = torch.randint(low=low,
-                                                  high=high,
-                                                  size=(1, len(test_member_index)))[0].tolist()
+            for _ in range(train_member_length):
+                training_member_index.append(random_subset.pop())
+
+            for _ in range(test_member_length):
+                test_member_index.append(random_subset.pop())
+
+            random_subset = list(range(low_non_member, high_non_member))
+            random.shuffle(random_subset)
+
+            for _ in range(train_non_member_length):
+                training_non_member_index.append(random_subset.pop())
+
+            for _ in range(test_non_member_length):
+                test_non_member_index.append(random_subset.pop())
 
             # Create the subsets for this class
-            train_member_set = torch.utils.data.Subset(member_data[0], training_member_index)
+            train_member_set = torch.utils.data.Subset(training_data, training_member_index)
             train_non_member_set = torch.utils.data.Subset(non_member_data, training_non_member_index)
-            test_member_set = torch.utils.data.Subset(member_data[1], test_member_index)
+            test_member_set = torch.utils.data.Subset(training_data, test_member_index)
             test_non_member_set = torch.utils.data.Subset(non_member_data, test_non_member_index)
 
             self.class_attack_data_subsets.append((train_member_set, train_non_member_set))
             self.class_test_data_subsets.append((test_member_set, test_non_member_set))
-
         logging.debug('loaded attacker data successfully')
+
+    def gradient_ascent_attack(self, round_number):
+        """ Ja hier moet dus documentatie """
+        self.model.train()
+        self.model.to(self.device)
+
+        self.active_attack_optimizer = optimizers.__dict__['Adam'](
+            params=self.model.parameters(),
+            maximize=True,
+            lr=0.0001
+        )
+
+        data_size = len(self.attack_data_loader.dataset)
+
+        batch_time = AverageMeter()
+        losses = AverageMeter()
+
+        start_time = time.time()
+        correct = 0
+
+        for data, labels in self.attack_data_loader:
+            # Transfer data to CPU or GPU and set gradients to zero for performance.
+            data, labels = data.float().to(self.device), labels.long().to(self.device)
+            self.active_attack_optimizer.zero_grad()
+
+            # Do a forward pass through the network to get prediction values and update loss metric.
+            outputs = self.model(data)
+            loss = self.loss_function(outputs, labels)
+
+            # Do a backward pass through the network to get the gradients
+            # and then use the optimizer to update the weights.
+            loss.backward()
+            self.active_attack_optimizer.step()
+
+            # Update loss, accuracy and run_time metrics
+            losses.update(loss.item())
+            batch_time.update(time.time() - start_time)
+
+        message = f'[ Round: {round_number} ' \
+                  f'| Local Train ' \
+                  f'| Client: {self.client_id} ' \
+                  f'| Time: {batch_time.avg:.2f}s ' \
+                  f'| Loss: {losses.avg:.5f} ' \
+                  f'| Tr_Acc ({correct}/{data_size})={((correct / data_size) * 100):.2f}% ]'
+        logging.info(message)
+        self.model.to("cpu")
 
     def train_attack(self, round_number, target_models):
         """ Ja hier moet dus documentatie """

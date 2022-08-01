@@ -10,13 +10,13 @@ experiment_config:
 attack_settings:
   passive_attack: 1
   active_attack: 0
-  eval_attack: 1
+  eval_attack: 0
   save_attack_model: 0
   attack_data_target_overlap_with: 'all'
   attack_batch_size: 64
   attack_loss_function: 'MSELoss'
   attack_optimizer: 'Adam'
-  attack_data_distribution: [ 1000, 1000, 1000, 1000 ]
+  attack_data_distribution: [ 15000, 5000, 5000, 5000 ]
   observed_target_models: [ 100 ]
   attack_model_path: './models/attack/'
 ---
@@ -24,7 +24,7 @@ training_settings:
   number_of_clients: 4
   client_data_overlap: 1
   if_overlap_client_dataset_size: 30000
-  training_rounds: 100
+  training_rounds: 1
   learning_rate: 0.01
   momentum: 0.9
   weight_decay: 0.0005
