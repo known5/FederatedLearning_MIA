@@ -1,3 +1,4 @@
+import copy
 import logging
 import random
 import time
@@ -54,6 +55,8 @@ class Attacker(Client):
         self.class_test_data_subsets = []
         self.number_of_classes = 100
         self.attack_data_loader = None
+        self.target_model = None
+        self.active_attack_optimizer = None
 
         # Create Attack model based on the target model.
         self.attack_model = AttackModel(target_model=self.model,
@@ -64,12 +67,6 @@ class Attacker(Client):
         self.attack_optimizer = optimizers.__dict__[self.attack_optimizer_name](
             params=self.attack_model.parameters(),
             lr=0.0001
-        )
-
-        self.active_attack_optimizer = optimizers.__dict__['SGD'](
-            params=self.model.parameters(),
-            maximize=True,
-            lr=0.1
         )
 
     def load_attack_data(self, training_data, non_member_data):
@@ -126,53 +123,65 @@ class Attacker(Client):
 
             self.class_attack_data_subsets.append((train_member_set, train_non_member_set))
             self.class_test_data_subsets.append((test_member_set, test_non_member_set))
+
         logging.debug('loaded attacker data successfully')
 
     def gradient_ascent_attack(self, round_number):
         """ Ja hier moet dus documentatie """
-        self.model.train()
-        self.model.to(self.device)
+        # Put model in training mode and load model onto device
 
-        self.active_attack_optimizer = optimizers.__dict__['Adam'](
-            params=self.model.parameters(),
+        self.target_model = copy.deepcopy(self.model)
+        self.active_attack_optimizer = optimizers.__dict__['SGD'](
+            params=self.target_model.parameters(),
             maximize=True,
             lr=0.0001
         )
+        self.target_model.train()
+        self.target_model.to(self.device)
 
-        data_size = len(self.attack_data_loader.dataset)
+        for data_class in range(self.number_of_classes):
+            # Setup variables to log statistics.
+            losses = 0
+            batch_time = AverageMeter()
+            loss_meter = AverageMeter()
+            start_time = time.time()
 
-        batch_time = AverageMeter()
-        losses = AverageMeter()
+            member, non_member = self.class_attack_data_subsets[data_class]
+            active_set = torch.utils.data.ConcatDataset([member, non_member])
+            attack_data_loader = DataLoader(active_set,
+                                            batch_size=self.attack_batch_size,
+                                            shuffle=True,
+                                            num_workers=2,
+                                            pin_memory=True
+                                            )
+            for data, labels in attack_data_loader:
+                # Transfer data to CPU or GPU and set gradients to zero for performance.
+                data, labels = data.float().to(self.device), labels.long().to(self.device)
+                self.active_attack_optimizer.zero_grad()
 
-        start_time = time.time()
-        correct = 0
+                # Do a forward pass through the network to get prediction values and update loss metric.
+                outputs = self.target_model(data)
+                loss = self.loss_function(outputs, labels)
 
-        for data, labels in self.attack_data_loader:
-            # Transfer data to CPU or GPU and set gradients to zero for performance.
-            data, labels = data.float().to(self.device), labels.long().to(self.device)
-            self.active_attack_optimizer.zero_grad()
+                # Do a backward pass through the network to get the gradients
+                # and then use the optimizer to update the weights.
+                loss.backward()
+                self.active_attack_optimizer.step()
+                losses += loss.item()
 
-            # Do a forward pass through the network to get prediction values and update loss metric.
-            outputs = self.model(data)
-            loss = self.loss_function(outputs, labels)
-
-            # Do a backward pass through the network to get the gradients
-            # and then use the optimizer to update the weights.
-            loss.backward()
-            self.active_attack_optimizer.step()
-
-            # Update loss, accuracy and run_time metrics
-            losses.update(loss.item())
+            # Update loss and run_time metrics
+            loss_meter.update(losses)
             batch_time.update(time.time() - start_time)
 
-        message = f'[ Round: {round_number} ' \
-                  f'| Local Train ' \
-                  f'| Client: {self.client_id} ' \
-                  f'| Time: {batch_time.avg:.2f}s ' \
-                  f'| Loss: {losses.avg:.5f} ' \
-                  f'| Tr_Acc ({correct}/{data_size})={((correct / data_size) * 100):.2f}% ]'
-        logging.info(message)
-        self.model.to("cpu")
+            message = f'[ Round: {round_number} ' \
+                      f'| Active Attack ' \
+                      f'| Class: {data_class}' \
+                      f'| Client: {self.client_id} ' \
+                      f'| Time: {batch_time.avg:.2f}s ' \
+                      f'| Loss: {loss_meter.avg:.5f} '
+            logging.info(message)
+        self.target_model.to("cpu")
+        self.model = copy.deepcopy(self.target_model)
 
     def train_attack(self, round_number, target_models):
         """ Ja hier moet dus documentatie """

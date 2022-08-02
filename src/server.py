@@ -107,7 +107,7 @@ class CentralServer(object):
         attacker_is_generated = False
         clients = []
         for client_id, dataset in enumerate(range(self.number_of_clients)):
-            if self.do_passive_attack > 0 and not attacker_is_generated:
+            if self.do_passive_attack > 0 or self.do_active_attack > 0 and not attacker_is_generated:
                 clients.append(Attacker(client_id + 1,
                                         training_param,
                                         attack_param,
@@ -181,7 +181,7 @@ class CentralServer(object):
             message = 'Distributed data among clients'
             logging.debug(message)
 
-        if self.do_passive_attack > 0:
+        if self.do_passive_attack > 0 or self.do_active_attack > 0:
             # If the condition below is met, sample member data from all clients
             if isinstance(self.attack_data_overlap, str) and self.attack_data_overlap == 'all':
                 # Send data files to attacker for inference
@@ -278,7 +278,11 @@ class CentralServer(object):
                     for client in self.clients:
                         client.learning_rate *= 0.1
 
-                self.do_training(index)
+                # self.do_training(index)
+                # If checked, perform gradient ascent learning on the attacker dataset each round.
+                if self.do_active_attack > 0 and index % self.do_active_attack == 0:
+                    attacker.gradient_ascent_attack(index)
+
                 self.aggregate_model()
                 self.share_model_with_clients()
                 # If checked, perform global model evaluation every round.
@@ -300,10 +304,6 @@ class CentralServer(object):
                                  f'_batch_{self.batch_size}',
                         checkpoint=self.model_path
                     )
-
-            # If checked, perform gradient ascent learning on the attacker dataset each round.
-            if self.do_active_attack > 0 and index % self.do_passive_attack == 0:
-                attacker.gradient_ascent_attack(index)
 
             # If checked, perform passive MIA during each round.
             if self.do_passive_attack > 0 and index % self.do_passive_attack == 0:
