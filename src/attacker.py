@@ -186,17 +186,20 @@ class Attacker(Client):
     def train_attack(self, round_number, target_models):
         """ Ja hier moet dus documentatie """
         # confusion matrix and accuracy metric initialized
-        confusion_matrix = ConfusionMatrix()
-        accuracy = AverageMeter()
-        batch_time = AverageMeter()
+        start_time = time.time()
+        final_confusion_matrix = ConfusionMatrix()
+        class_confusion_matrix = ConfusionMatrix()
         losses = AverageMeter()
+        accuracy = AverageMeter()
+        class_time = AverageMeter()
 
         self.attack_model.train()
 
         # perform inference per class for confusion matrix to keep accurate track of scores.
         for data_class in range(self.number_of_classes):
-            start_time = time.time()
-            confusion_matrix.reset()
+            class_start_time = time.time()
+            class_time.reset()
+            class_confusion_matrix.reset()
             member, non_member = self.class_attack_data_subsets[data_class]
 
             temp_data_loader = DataLoader(member,
@@ -294,39 +297,53 @@ class Attacker(Client):
                 self.attack_model.to('cpu')
 
                 # Measure training accuracy and report metric
-                acc = np.mean(
-                    (membership_predictions.data.cpu().numpy() > 0.5) == membership_labels.data.cpu().numpy()) * 100
-                confusion_matrix.update(membership_predictions, membership_labels)
-                accuracy.update(acc, self.attack_batch_size)
+                class_confusion_matrix.update(membership_predictions, membership_labels)
+                accuracy.update(class_confusion_matrix.get_accuracy(), self.attack_batch_size)
                 losses.update(attack_loss.item(), self.attack_batch_size)
-                batch_time.update(time.time() - start_time)
+                class_time.update(time.time() - class_start_time)
 
-            temp = confusion_matrix.get_confusion_matrix()
+            temp = class_confusion_matrix.get_confusion_matrix()
+            final_confusion_matrix.update_from_matrix(temp)
             message = f'[ Round: {round_number} ' \
                       f'| Attacker Train ' \
                       f'| Class: {data_class}' \
-                      f'| Time: {batch_time.avg:.2f}s ' \
+                      f'| Time: {class_time.avg:.2f}s ' \
                       f'| Loss: {losses.avg:.5f} ' \
-                      f'| Acc: {accuracy.avg:.2f}% ]' \
-                      f'| Conf Matrix: TP:{temp[0]}' \
+                      f'| Avg Acc: {accuracy.avg:.2f}% ]' \
+                      f'| Class Conf Matrix: TP:{temp[0]}' \
                       f' FP:{temp[1]}' \
                       f' TN:{temp[2]}' \
                       f' FN:{temp[3]} ]'
             logging.info(message)
 
+        temp = final_confusion_matrix.get_confusion_matrix()
+        message = f'[ Round: {round_number} Totals ' \
+                  f'| Attacker Train ' \
+                  f'| Total Time: {time.time() - start_time:.2f}s ' \
+                  f'| Loss: {losses.avg:.5f} ' \
+                  f'| Acc: {final_confusion_matrix.get_accuracy():.2f}% ]' \
+                  f'| Final Conf Matrix: TP:{temp[0]}' \
+                  f' FP:{temp[1]}' \
+                  f' TN:{temp[2]}' \
+                  f' FN:{temp[3]} ]'
+        logging.info(message)
+
     def test_attack(self, round_number, target_models):
         """ Ja hier moet dus documentatie """
         # Metrics
-        confusion_matrix = ConfusionMatrix()
-        batch_time = AverageMeter()
+        start_time = time.time()
+        final_confusion_matrix = ConfusionMatrix()
+        class_confusion_matrix = ConfusionMatrix()
         losses = AverageMeter()
         accuracy = AverageMeter()
+        class_time = AverageMeter()
 
         self.attack_model.eval()
 
         for data_class in range(self.number_of_classes):
-            start_time = time.time()
-            confusion_matrix.reset()
+            class_start_time = time.time()
+            class_time.reset()
+            class_confusion_matrix.reset()
             member, non_member = self.class_test_data_subsets[data_class]
 
             temp_data_loader = DataLoader(member,
@@ -417,26 +434,35 @@ class Attacker(Client):
                     # Calculate the loss of attack model
                     attack_loss = self.attack_loss_function(membership_predictions, membership_labels)
 
-                    # Measure training accuracy and report metrics
-                    acc = np.mean(
-                        (membership_predictions.data.cpu().numpy() > 0.5) == membership_labels.data.cpu().numpy()) * 100
-
-                    confusion_matrix.update(membership_predictions, membership_labels)
-                    accuracy.update(acc, self.attack_batch_size)
+                    class_confusion_matrix.update(membership_predictions, membership_labels)
+                    accuracy.update(class_confusion_matrix.get_accuracy(), self.attack_batch_size)
                     losses.update(attack_loss.item(), self.attack_batch_size)
-                    batch_time.update(time.time() - start_time)
+                    class_time.update(time.time() - class_start_time)
 
                 self.attack_model.to('cpu')
 
-            temp = confusion_matrix.get_confusion_matrix()
+            temp = class_confusion_matrix.get_confusion_matrix()
+            final_confusion_matrix.update_from_matrix(temp)
             message = f'[ Round: {round_number} ' \
                       f'| Attacker Test ' \
                       f'| Class: {data_class}' \
-                      f'| Time: {batch_time.avg:.2f}s ' \
+                      f'| Time: {class_time.avg:.2f}s ' \
                       f'| Loss: {losses.avg:.5f} ' \
-                      f'| Acc: {accuracy.avg:.2f}% ]' \
-                      f'| Conf Matrix: TP:{temp[0]}' \
+                      f'| Avg Acc: {accuracy.avg:.2f}% ]' \
+                      f'| Class Conf Matrix: TP:{temp[0]}' \
                       f' FP:{temp[1]}' \
                       f' TN:{temp[2]}' \
                       f' FN:{temp[3]} ]'
             logging.info(message)
+
+        temp = final_confusion_matrix.get_confusion_matrix()
+        message = f'[ Round: {round_number} Totals ' \
+                  f'| Attacker Test ' \
+                  f'| Total Time: {time.time() - start_time:.2f}s ' \
+                  f'| Loss: {losses.avg:.5f} ' \
+                  f'| Acc: {final_confusion_matrix.get_accuracy():.2f}% ]' \
+                  f'| Final Conf Matrix: TP:{temp[0]}' \
+                  f' FP:{temp[1]}' \
+                  f' TN:{temp[2]}' \
+                  f' FN:{temp[3]} ]'
+        logging.info(message)

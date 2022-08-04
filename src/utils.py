@@ -23,6 +23,14 @@ class ConfusionMatrix(object):
         self.tn = 0
         self.fn = 0
 
+    def update_from_matrix(self, confusion_matrix):
+        (tp, fp, tn, fn) = confusion_matrix
+
+        self.tp += tp
+        self.fn += fn
+        self.fp += fp
+        self.tn += tn
+
     def update(self, y_pred, y_true):
         confusion_vector = (torch.round(y_pred) / y_true).float()
 
@@ -30,6 +38,9 @@ class ConfusionMatrix(object):
         self.fn += torch.sum(confusion_vector == 0.).item()
         self.fp += torch.sum(confusion_vector == float('inf')).item()
         self.tn += torch.sum(torch.isnan(confusion_vector)).item()
+
+    def get_accuracy(self):
+        return ((self.tp + self.tn) / (self.tp + self.tn + self.fp + self.fn)) * 100
 
     def get_confusion_matrix(self):
         return self.tp, self.fp, self.tn, self.fn
