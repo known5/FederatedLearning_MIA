@@ -278,7 +278,7 @@ class CentralServer(object):
                     for client in self.clients:
                         client.learning_rate *= 0.1
 
-                # self.do_training(index)
+                self.do_training(index)
                 # If checked, perform gradient ascent learning on the attacker dataset each round.
                 if self.do_active_attack > 0 and index % self.do_active_attack == 0:
                     attacker.gradient_ascent_attack(index)
