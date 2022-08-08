@@ -3,13 +3,11 @@ import logging
 import random
 import time
 
-import numpy as np
 import torch
 import torch.nn.functional as f
 import torch.optim as optimizers
 import torch.utils
 from torch.utils.data import DataLoader
-import itertools
 
 from src.models import AttackModel, get_output_shape_of_last_layer
 from src.utils import AverageMeter, get_torch_loss_function, ConfusionMatrix
@@ -57,6 +55,7 @@ class Attacker(Client):
         self.attack_data_loader = None
         self.target_model = None
         self.active_attack_optimizer = None
+        self.active_learning_rate = 0.0001
 
         # Create Attack model based on the target model.
         self.attack_model = AttackModel(target_model=self.model,
@@ -134,7 +133,7 @@ class Attacker(Client):
         self.active_attack_optimizer = optimizers.__dict__['SGD'](
             params=self.target_model.parameters(),
             maximize=True,
-            lr=0.0001
+            lr=self.active_learning_rate
         )
         self.target_model.train()
         self.target_model.to(self.device)

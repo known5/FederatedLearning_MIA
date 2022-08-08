@@ -4,7 +4,7 @@ import pandas as pd
 # Variables
 
 
-filepath = '../log/7_27/41'
+filepath = '../log/7_27/333_clients_4_rounds_100_a_batch_64_a_lr_0.0001.txt'
 data = pd.read_csv(filepath, delimiter='INFO:root:', on_bad_lines='skip', engine='python')
 
 pd.options.display.width = None
@@ -42,4 +42,11 @@ if __name__ == "__main__":
     data.columns = ['Round', 'Type', 'Class', 'Time', 'Loss', 'Accuracy', 'True P', 'False P', 'True N', 'False N']
     data = data.reset_index()
     data = data.drop(columns=['index'])
-    print(data)
+    data = data.astype({'Accuracy': 'double'})
+
+    train_set = data[data['Type'] == ' Attacker Test ']
+    temp = train_set[train_set['Round'] == '90 ']
+
+    print(temp)
+
+    print(temp['Accuracy'].mean().round(3))

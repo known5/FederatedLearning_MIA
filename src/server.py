@@ -275,6 +275,7 @@ class CentralServer(object):
             if self.train_model > 0 and index % self.train_model == 0:
                 # Adjust the learning rates at given epochs
                 if index in [50, 100]:
+                    attacker.active_learning_rate += 0.1
                     for client in self.clients:
                         client.learning_rate *= 0.1
 
