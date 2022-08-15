@@ -41,43 +41,27 @@ if __name__ == '__main__':
     # create target model dir if not exists
     if not os.path.exists(experiment_config['model_path']):
         os.makedirs(experiment_config['model_path'])
-
+        
     # create target model dir if not exists
     if not os.path.exists(attack_config['attack_model_path']):
         os.makedirs(attack_config['attack_model_path'])
+        
 
     # Create log filename
     log_filename = date_string + file_number
     if experiment_config['train_model'] > 0:
-        number_of_clients = training_config['number_of_clients']
-        training_rounds = training_config['training_rounds']
-        batch_size = training_config['batch_size']
-        learning_rate = training_config['learning_rate']
 
-        temp = attack_config['active_attack']
-        if temp > 0:
-            log_filename += f'_Active_attack_every_{temp}_target_training_clients_{number_of_clients}'
-
+        if attack_config['active_attack'] > 0:
+            log_filename += '_active_target_training_'
         else:
-            log_filename += f'_Target_training_clients_{number_of_clients}'
-
-        log_filename += f'_rounds_{training_rounds}' \
-                        f'_batch_{batch_size}' \
-                        f'_lr_{learning_rate}'
-        if training_config['client_data_overlap'] > 0:
-            overlapsize = training_config['if_overlap_client_dataset_size']
-            log_filename += f'_overlap_yes_overlapsize_{overlapsize}'
-        else:
-            log_filename += f'_overlap_no'
-
+            log_filename += '_target_training'
+            
     elif attack_config['passive_attack'] > 0:
-        number_of_clients = training_config['number_of_clients']
-        training_rounds = training_config['training_rounds']
-        batch_size = attack_config['attack_batch_size']
-        log_filename += f'_clients_{number_of_clients}' \
-                        f'_rounds_{training_rounds}' \
-                        f'_a_batch_{batch_size}' \
-                        f'_a_lr_{0.0001}'
+        if attack_config['active_attack'] > 0:
+            log_filename += '_active_attack_'
+        else:
+            log_filename += '_passive_attack_'
+
 
     # Set op logger
     logging.basicConfig(filename=log_filename + '.txt',

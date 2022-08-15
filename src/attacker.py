@@ -55,7 +55,7 @@ class Attacker(Client):
         self.attack_data_loader = None
         self.target_model = None
         self.active_attack_optimizer = None
-        self.active_learning_rate = 0.0001
+        self.active_learning_rate = 0.2
 
         # Create Attack model based on the target model.
         self.attack_model = AttackModel(target_model=self.model,
@@ -165,6 +165,7 @@ class Attacker(Client):
                 # Do a backward pass through the network to get the gradients
                 # and then use the optimizer to update the weights.
                 loss.backward()
+                torch.nn.utils.clip_grad_value_(self.target_model.parameters(), 5)
                 self.active_attack_optimizer.step()
                 losses += loss.item()
 
