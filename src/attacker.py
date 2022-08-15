@@ -55,7 +55,7 @@ class Attacker(Client):
         self.attack_data_loader = None
         self.target_model = None
         self.active_attack_optimizer = None
-        self.active_learning_rate = 0.2
+        self.active_learning_rate = attack_data['active_learning_rate']
 
         # Create Attack model based on the target model.
         self.attack_model = AttackModel(target_model=self.model,
@@ -67,6 +67,14 @@ class Attacker(Client):
             params=self.attack_model.parameters(),
             lr=0.0001
         )
+        message = f"[ Attacker Settings: \n" \
+                  f"| Attack Data Distribution: {self.attack_data_distribution} \n" \
+                  f"| Attack LR: {0.0001} \n" \
+                  f"| Attack Batch: {self.attack_batch_size} \n" \
+                  f"| Attack optim: {self.attack_optimizer_name} \n" \
+                  f"| Attack Loss: {attack_data['attack_loss_function']} \n" \
+                  f"| Active LR: {self.active_learning_rate} ]\n"
+        logging.info(msg=message)
 
     def load_attack_data(self, training_data, non_member_data):
         """ Ja hier moet dus documentatie """
@@ -130,7 +138,7 @@ class Attacker(Client):
         # Put model in training mode and load model onto device
 
         self.target_model = copy.deepcopy(self.model)
-        self.active_attack_optimizer = optimizers.__dict__['SGD'](
+        self.active_attack_optimizer = optimizers.__dict__['Adam'](
             params=self.target_model.parameters(),
             maximize=True,
             lr=self.active_learning_rate

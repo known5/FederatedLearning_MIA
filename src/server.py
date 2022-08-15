@@ -81,6 +81,24 @@ class CentralServer(object):
         self.model = None
         self.target_models_for_inference = []
 
+        message = f"[ Main Settings: \n" \
+                  f"| Device: {self.device} \n" \
+                  f"| Train Model: {self.train_model} \n" \
+                  f"| global_eval: {self.do_global_eval} \n" \
+                  f"| save_model: {self.save_model} \n" \
+                  f"| clients: {self.number_of_clients} \n" \
+                  f"| classes: {self.number_of_classes} \n" \
+                  f"| batch_size: {self.batch_size} \n" \
+                  f"| rounds: {self.number_of_training_rounds} \n" \
+                  f"| overlap: {self.client_data_overlap} \n" \
+                  f"| passive_attack: {self.do_passive_attack} \n" \
+                  f"| active_attack: {self.do_active_attack} \n" \
+                  f"| eval_attack: {self.eval_attack} \n" \
+                  f"| save_attack_model: {self.save_attack_model} \n" \
+                  f"| model_path: {self.model_path} \n" \
+                  f"| Attack_model_path: {self.attack_model_path} ]\n"
+        logging.info(msg=message)
+
     def start_up(self):
         """ Ja hier moet dus documentatie """
 

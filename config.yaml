@@ -1,21 +1,22 @@
 experiment_config:
   seed: [ 42 ]
   device: "cpu"
-  train_model: 0
+  train_model: 1
   local_eval: 0
-  global_eval: 0
+  global_eval: 1
   save_model: 0
   model_path: './models/seed_42/target_4/'
 ---
 attack_settings:
-  passive_attack: 1
-  active_attack: 0
+  passive_attack: 0
+  active_attack: 2
   eval_attack: 0
   save_attack_model: 0
   attack_data_target_overlap_with: 'all'
   attack_batch_size: 64
   attack_loss_function: 'MSELoss'
   attack_optimizer: 'Adam'
+  active_learning_rate: 0.0002
   attack_data_distribution: [ 15000, 5000, 5000, 5000 ]
   observed_target_models: [ 100 ]
   attack_model_path: './models/attack/'
@@ -24,7 +25,7 @@ training_settings:
   number_of_clients: 4
   client_data_overlap: 1
   if_overlap_client_dataset_size: 30000
-  training_rounds: 1
+  training_rounds: 3
   learning_rate: 0.01
   momentum: 0.9
   weight_decay: 0.0005

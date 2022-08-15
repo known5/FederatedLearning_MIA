@@ -41,27 +41,25 @@ if __name__ == '__main__':
     # create target model dir if not exists
     if not os.path.exists(experiment_config['model_path']):
         os.makedirs(experiment_config['model_path'])
-        
+
     # create target model dir if not exists
     if not os.path.exists(attack_config['attack_model_path']):
         os.makedirs(attack_config['attack_model_path'])
-        
 
     # Create log filename
     log_filename = date_string + file_number
     if experiment_config['train_model'] > 0:
 
         if attack_config['active_attack'] > 0:
-            log_filename += '_active_target_training_'
+            log_filename += '_active_target_training'
         else:
             log_filename += '_target_training'
-            
+
     elif attack_config['passive_attack'] > 0:
         if attack_config['active_attack'] > 0:
-            log_filename += '_active_attack_'
+            log_filename += '_active_attack'
         else:
-            log_filename += '_passive_attack_'
-
+            log_filename += '_passive_attack'
 
     # Set op logger
     logging.basicConfig(filename=log_filename + '.txt',
