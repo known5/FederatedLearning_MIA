@@ -19,6 +19,7 @@ attack_settings:
   active_learning_rate: 0.0002
   attack_data_distribution: [ 15000, 5000, 5000, 5000 ]
   observed_target_models: [ 100 ]
+  combine_classes_for_test_attack: 1
   attack_model_path: './models/attack/'
 ---
 training_settings:

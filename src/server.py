@@ -59,6 +59,7 @@ class CentralServer(object):
         self.observed_target_models = attack_param['observed_target_models']
         self.attack_model_path = attack_param['attack_model_path']
         self.eval_attack = attack_param['eval_attack']
+        self.combine_classes = attack_param['combine_classes_for_test_attack']
 
         self.dataset_path = data_param['data_path']
         self.dataset_name = data_param['dataset_name']
@@ -293,7 +294,7 @@ class CentralServer(object):
             if self.train_model > 0 and index % self.train_model == 0:
                 # Adjust the learning rates at given epochs
                 if index in [50, 100]:
-                    # attacker.active_learning_rate *= 0.1
+                    attacker.active_learning_rate *= 0.1
                     for client in self.clients:
                         client.learning_rate *= 0.1
 
@@ -329,7 +330,10 @@ class CentralServer(object):
                 attacker.train_attack(index, self.target_models_for_inference)
 
                 if self.eval_attack > 0 and index % self.eval_attack == 0:
-                    attacker.test_attack(index, self.target_models_for_inference)
+                    if self.combine_classes > 0:
+                        attacker.test_attack_combine_classes(index, self.target_models_for_inference)
+                    else:
+                        attacker.test_attack(index, self.target_models_for_inference)
 
                 if self.save_attack_model > 0 and index % self.save_attack_model == 0:
                     is_best = (round_accuracy >= max(self.attack_results['accuracy']))
