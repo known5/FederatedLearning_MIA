@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+import sys
 from datetime import datetime
 
 import numpy.random
@@ -11,8 +12,10 @@ from src.server import CentralServer
 from src.utils import get_duration
 
 if __name__ == '__main__':
+    # read input value
+    seed = int(sys.argv[1])
     # read configuration file
-    with open('./config.yaml') as c:
+    with open('./config_' + str(seed) + '.yaml') as c:
         configs = list(yaml.load_all(c, Loader=yaml.FullLoader))
     experiment_config = configs[0]["experiment_config"]
     attack_config = configs[1]['attack_settings']
