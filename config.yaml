@@ -1,25 +1,25 @@
 experiment_config:
   seed: [ 42 ]
   device: "cpu"
-  train_model: 1
+  train_model: 0
   local_eval: 0
-  global_eval: 1
+  global_eval: 0
   save_model: 0
   model_path: './models/seed_42/target_4/'
 ---
 attack_settings:
   passive_attack: 0
-  active_attack: 2
-  eval_attack: 0
-  save_attack_model: 0
+  active_attack: 0
+  eval_attack: 1
+  save_attack_model: 1
   attack_data_target_overlap_with: 'all'
-  attack_batch_size: 64
+  train_batch_size: 64
+  test_batch_size: 2
   attack_loss_function: 'MSELoss'
   attack_optimizer: 'Adam'
   active_learning_rate: 0.0002
-  attack_data_distribution: [ 15000, 5000, 5000, 5000 ]
+  attack_data_distribution: [ 100, 100, 100, 100 ]
   observed_target_models: [ 100 ]
-  combine_classes_for_test_attack: 1
   attack_model_path: './models/attack/'
 ---
 training_settings:
@@ -30,7 +30,8 @@ training_settings:
   learning_rate: 0.01
   momentum: 0.9
   weight_decay: 0.0005
-  batch_size: 64
+  train_batch_size: 64
+  test_batch_size: 64
   loss_function: 'CrossEntropyLoss'
   optimizer: 'SGD'
 ---

@@ -59,7 +59,6 @@ class CentralServer(object):
         self.observed_target_models = attack_param['observed_target_models']
         self.attack_model_path = attack_param['attack_model_path']
         self.eval_attack = attack_param['eval_attack']
-        self.combine_classes = attack_param['combine_classes_for_test_attack']
 
         self.dataset_path = data_param['data_path']
         self.dataset_name = data_param['dataset_name']
@@ -69,7 +68,8 @@ class CentralServer(object):
         self.number_of_clients = training_param['number_of_clients']
         self.number_of_training_rounds = training_param['training_rounds']
         self.loss_function = get_torch_loss_function(training_param['loss_function'])
-        self.batch_size = training_param['batch_size']
+        self.train_batch_size = training_param['train_batch_size']
+        self.test_batch_size = training_param['test_batch_size']
         self.client_data_overlap = training_param['client_data_overlap']
         self.if_overlap_client_dataset_size = training_param['if_overlap_client_dataset_size']
 
@@ -89,13 +89,15 @@ class CentralServer(object):
                   f"| save_model: {self.save_model} \n" \
                   f"| clients: {self.number_of_clients} \n" \
                   f"| classes: {self.number_of_classes} \n" \
-                  f"| batch_size: {self.batch_size} \n" \
+                  f"| train_batch_size: {self.train_batch_size} \n" \
+                  f"| test_batch_siez: {self.test_batch_size} \n" \
                   f"| rounds: {self.number_of_training_rounds} \n" \
                   f"| overlap: {self.client_data_overlap} \n" \
                   f"| passive_attack: {self.do_passive_attack} \n" \
                   f"| active_attack: {self.do_active_attack} \n" \
                   f"| eval_attack: {self.eval_attack} \n" \
                   f"| save_attack_model: {self.save_attack_model} \n" \
+                  f"| observed_target_models: {self.observed_target_models} \n" \
                   f"| model_path: {self.model_path} \n" \
                   f"| Attack_model_path: {self.attack_model_path} ]\n"
         logging.info(msg=message)
@@ -115,7 +117,7 @@ class CentralServer(object):
 
         if self.do_passive_attack > 0:
             for index in self.observed_target_models:
-                filename = f'epoch_{index}_main_clients_{self.number_of_clients}_batch_{self.batch_size}'
+                filename = f'epoch_{index}_main_clients_{self.number_of_clients}_batch_{self.train_batch_size}'
                 self.target_models_for_inference.append(load_target_model(self.model_path, filename))
 
         message = 'Completed main server startup'
@@ -126,7 +128,7 @@ class CentralServer(object):
         attacker_is_generated = False
         clients = []
         for client_id, dataset in enumerate(range(self.number_of_clients)):
-            if self.do_passive_attack > 0 or self.do_active_attack > 0 and not attacker_is_generated:
+            if (self.do_passive_attack > 0 or self.do_active_attack > 0) and not attacker_is_generated:
                 clients.append(Attacker(client_id + 1,
                                         training_param,
                                         attack_param,
@@ -152,7 +154,7 @@ class CentralServer(object):
         # load correct dataset from torchvision
         training_data, test_data = load_dataset(data_path, data_name)
         self.global_test_dataloader = DataLoader(test_data,
-                                                 batch_size=self.batch_size,
+                                                 batch_size=self.test_batch_size,
                                                  shuffle=False,
                                                  num_workers=2,
                                                  pin_memory=True
@@ -294,13 +296,14 @@ class CentralServer(object):
             if self.train_model > 0 and index % self.train_model == 0:
                 # Adjust the learning rates at given epochs
                 if index in [50, 100]:
-                    attacker.active_learning_rate *= 0.1
                     for client in self.clients:
                         client.learning_rate *= 0.1
 
                 self.do_training(index)
                 # If checked, perform gradient ascent learning on the attacker dataset each round.
                 if self.do_active_attack > 0 and index % self.do_active_attack == 0:
+                    if index in [50, 100]:
+                        attacker.active_learning_rate *= 0.1
                     attacker.gradient_ascent_attack(index)
 
                 self.aggregate_model()
@@ -321,7 +324,7 @@ class CentralServer(object):
                     }, is_best=is_best,
                         filename=f'epoch_{index}'
                                  f'_main_clients_{self.number_of_clients}'
-                                 f'_batch_{self.batch_size}',
+                                 f'_batch_{self.train_batch_size}',
                         checkpoint=self.model_path
                     )
 
@@ -330,10 +333,7 @@ class CentralServer(object):
                 attacker.train_attack(index, self.target_models_for_inference)
 
                 if self.eval_attack > 0 and index % self.eval_attack == 0:
-                    if self.combine_classes > 0:
-                        attacker.test_attack_combine_classes(index, self.target_models_for_inference)
-                    else:
-                        attacker.test_attack(index, self.target_models_for_inference)
+                    attacker.test_attack(index, self.target_models_for_inference)
 
                 if self.save_attack_model > 0 and index % self.save_attack_model == 0:
                     is_best = (round_accuracy >= max(self.attack_results['accuracy']))
