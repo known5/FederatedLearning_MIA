@@ -19,7 +19,7 @@ class Client(object):
         self.momentum = training_param['momentum']
         self.weight_decay = training_param['weight_decay']
 
-        self.batch_size = training_param['batch_size']
+        self.batch_size = training_param['train_batch_size']
         self.client_id = client_id
         self.device = device
 

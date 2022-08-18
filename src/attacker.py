@@ -434,7 +434,7 @@ class Attacker(Client):
                 # update class confusion matrices, to see scores per original class
                 combined_labels = zip(labels, membership_labels)
                 for index, (data_class, member_class) in enumerate(combined_labels):
-                    class_matrices[data_class].update(membership_predictions[index], member_class)
+                    class_matrices[data_class.item()].update(membership_predictions[index], member_class)
 
                 batch_confusion_matrix.update(membership_predictions, membership_labels)
                 accuracy.update(batch_confusion_matrix.get_accuracy(), self.attack_test_batch_size)
@@ -447,7 +447,7 @@ class Attacker(Client):
             message = f'[ Round: {round_number} ' \
                       f'| Attacker Test ' \
                       f'| Batch Time: {time.time() - batch_start_time:.2f}s ' \
-                      f'| Batch Loss: {attack_loss // self.attack_test_batch_size:.5f} ' \
+                      f'| Batch Loss: {attack_loss:.5f} ' \
                       f'| Batch Acc: {batch_confusion_matrix.get_accuracy():.2f}% ]' \
                       f'| Class Conf Matrix: TP:{temp[0]}' \
                       f' FP:{temp[1]}' \
@@ -455,7 +455,8 @@ class Attacker(Client):
                       f' FN:{temp[3]} ]'
             logging.info(message)
 
-        message = f'[ Round: {round_number} Class Scores \n'
+        # Print all the scores for each class.
+        message = f'[ Round: {round_number} Class Scores ]\n'
         for data_class in range(self.number_of_classes):
             class_matrix = class_matrices.get(data_class)
             scores = class_matrix.get_confusion_matrix()
@@ -464,10 +465,14 @@ class Attacker(Client):
                             f'| Conf Matrix: TP:{scores[0]}' \
                             f' FP:{scores[1]}' \
                             f' TN:{scores[2]}' \
-                            f' FN:{scores[3]} ]\n'
-            message += class_message
+                            f' FN:{scores[3]} ]'
+            if data_class == 99:
+                message += class_message
+            else:
+                message += class_message + '\n'
         logging.info(message)
 
+        # Print the final summary of this test
         temp = final_confusion_matrix.get_confusion_matrix()
         message = f'[ Round: {round_number} Totals ' \
                   f'| Attacker Test ' \
