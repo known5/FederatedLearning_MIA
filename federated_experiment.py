@@ -53,19 +53,19 @@ if __name__ == '__main__':
     log_filename = date_string + file_number
     if experiment_config['train_model'] > 0:
 
-        if attack_config['active_attack'] > 0:
-            log_filename += '_active_target_training'
+        if 'active' in experiment_config['model_path']:
+            log_filename += '_active_target_training_'
         else:
-            log_filename += '_target_training'
+            log_filename += '_target_training_'
 
     elif attack_config['passive_attack'] > 0:
-        if attack_config['active_attack'] > 0:
-            log_filename += '_active_attack'
+        if 'active' in experiment_config['model_path']:
+            log_filename += '_active_attack_'
         else:
-            log_filename += '_passive_attack'
+            log_filename += '_passive_attack_'
 
     # Set op logger
-    logging.basicConfig(filename=log_filename + '.txt',
+    logging.basicConfig(filename=log_filename + str(seed) + '.txt',
                         filemode='w',
                         level=getattr(logging, log_config['log_level']))
 

@@ -337,18 +337,19 @@ class CentralServer(object):
 
                 if self.save_attack_model > 0 and index % self.save_attack_model == 0:
                     is_best = (round_accuracy >= max(self.attack_results['accuracy']))
-                    save_checkpoint_adversary({
-                        'epoch': index,
-                        'state_dict': self.clients[0].model.state_dict(),
-                        'acc': round_accuracy,
-                        'best_acc': is_best,
-                        'optimizer': attacker.attack_optimizer.state_dict()
-                    }, is_best=is_best,
-                        filename=f'_epoch_{index}'
-                                 f'_attack_clients_{self.number_of_clients}'
-                                 f'_batch_{attacker.attack_batch_size}',
-                        checkpoint=self.attack_model_path
-                    )
+                    if is_best:
+                        save_checkpoint_adversary({
+                            'epoch': index,
+                            'state_dict': self.clients[0].model.state_dict(),
+                            'acc': round_accuracy,
+                            'best_acc': is_best,
+                            'optimizer': attacker.attack_optimizer.state_dict()
+                        }, is_best=is_best,
+                            filename=f'_epoch_{index}'
+                                     f'_attack_clients_{self.number_of_clients}'
+                                     f'_batch_{attacker.attack_batch_size}',
+                            checkpoint=self.attack_model_path
+                        )
 
             message = f'[ Round: {index} | Finished! ]'
             logging.info(message)
