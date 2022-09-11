@@ -1,29 +1,16 @@
 import copy
-import logging
-import random
 import time
+import random
+import logging
 
 import torch
-import torch.nn.functional as f
-import torch.optim as optimizers
 import torch.utils
-from torch.utils.data import DataLoader
+import torch.optim as optimizers
 
-from src.models import AttackModel, get_output_shape_of_last_layer
-from src.utils import AverageMeter, get_torch_loss_function, ConfusionMatrix
 from .client import Client
-
-
-def create_ohe(model):
-    """ Ja hier moet dus documentatie """
-    output_size = get_output_shape_of_last_layer(model)
-    return f.one_hot(input=torch.arange(0, output_size), num_classes=output_size)
-
-
-def one_hot_encoding(labels, encoding, device):
-    """ Ja hier moet dus documentatie """
-    labels = labels.type(torch.int64).cpu().numpy()
-    return torch.stack(list(map(lambda x: encoding[x], labels))).to(device)
+from src.models import AttackModel
+from torch.utils.data import DataLoader
+from src.utils import AverageMeter, get_torch_loss_function, ConfusionMatrix, encode_labels, create_one_hot_encoding
 
 
 class Attacker(Client):
@@ -43,11 +30,12 @@ class Attacker(Client):
         self.eval_attack = attack_data['eval_attack']
         self.attack_train_batch_size = attack_data['train_batch_size']
         self.attack_test_batch_size = attack_data['test_batch_size']
-        self.one_hot_encoding = create_ohe(self.model)
+        self.one_hot_encoding = create_one_hot_encoding(self.model)
 
         self.attack_data_distribution = attack_data['attack_data_distribution']
         self.attack_loss_function = get_torch_loss_function(attack_data['attack_loss_function'])
         self.attack_optimizer_name = attack_data['attack_optimizer']
+        self.attack_model_learning_rate = attack_data['attack_model_learning_rate']
 
         # Pre define general variables.
         self.class_test_data_subsets = []
@@ -66,7 +54,7 @@ class Attacker(Client):
         # Set attack optimizer after sending model to device
         self.attack_optimizer = optimizers.__dict__[self.attack_optimizer_name](
             params=self.attack_model.parameters(),
-            lr=0.0001
+            lr=self.attack_model_learning_rate
         )
         message = f"[ Attacker Settings: \n" \
                   f"| Attack Data Distribution: {self.attack_data_distribution} \n" \
@@ -198,14 +186,14 @@ class Attacker(Client):
         # Load in training data
         member, non_member = self.attack_train_data
         temp_data_loader = DataLoader(member,
-                                      batch_size=self.attack_train_batch_size,
+                                      batch_size=self.attack_train_batch_size // 2,
                                       shuffle=True,
                                       num_workers=2,
                                       pin_memory=True
                                       )
 
         temp_data_loader_2 = DataLoader(non_member,
-                                        batch_size=self.attack_train_batch_size,
+                                        batch_size=self.attack_train_batch_size // 2,
                                         shuffle=True,
                                         num_workers=2,
                                         pin_memory=True
@@ -232,7 +220,7 @@ class Attacker(Client):
                 (member_target, non_member_target))
 
             # Create one-hot encoding of labels, as this has to be done only once.
-            one_hot_labels = one_hot_encoding(labels, self.one_hot_encoding, self.device).float()
+            one_hot_labels = encode_labels(labels, self.one_hot_encoding, self.device).float()
 
             # For each observed model collect input data for the attack model.
             for model in target_models:
@@ -276,6 +264,7 @@ class Attacker(Client):
 
             # Get the predictions for the membership classification
             self.attack_model.to(self.device)
+            self.attack_optimizer.zero_grad()
 
             # Change labels of the data for binary attack classification
             member_target = torch.Tensor([1 for _ in member_input])
@@ -289,7 +278,6 @@ class Attacker(Client):
             attack_loss = self.attack_loss_function(membership_predictions, membership_labels)
 
             # Perform optimizer steps
-            self.attack_optimizer.zero_grad()
             attack_loss.backward()
             self.attack_optimizer.step()
             # Place model back to CPU
@@ -341,14 +329,14 @@ class Attacker(Client):
 
         member, non_member = self.attack_test_data
         temp_data_loader = DataLoader(member,
-                                      batch_size=self.attack_test_batch_size,
+                                      batch_size=self.attack_test_batch_size // 2,
                                       shuffle=False,
                                       num_workers=2,
                                       pin_memory=True
                                       )
 
         temp_data_loader_2 = DataLoader(non_member,
-                                        batch_size=self.attack_test_batch_size,
+                                        batch_size=self.attack_test_batch_size // 2,
                                         shuffle=False,
                                         num_workers=2,
                                         pin_memory=True
@@ -374,7 +362,7 @@ class Attacker(Client):
                 (member_target, non_member_target))
 
             # Create one-hot encoding of labels, as this has to be done only once.
-            one_hot_labels = one_hot_encoding(labels, self.one_hot_encoding, self.device).float()
+            one_hot_labels = encode_labels(labels, self.one_hot_encoding, self.device).float()
             #
             for model in target_models:
                 #
@@ -455,6 +443,19 @@ class Attacker(Client):
                       f' FN:{temp[3]} ]'
             logging.info(message)
 
+        # Print the final summary of this test
+        temp = final_confusion_matrix.get_confusion_matrix()
+        message = f'[ Round: {round_number} Totals ' \
+                  f'| Attacker Test ' \
+                  f'| Total Time: {time.time() - start_time:.2f}s ' \
+                  f'| Loss: {losses.avg:.5f} ' \
+                  f'| Acc: {final_confusion_matrix.get_accuracy():.2f}% ' \
+                  f'| Final Conf Matrix: TP:{temp[0]}' \
+                  f' FP:{temp[1]}' \
+                  f' TN:{temp[2]}' \
+                  f' FN:{temp[3]} ]'
+        logging.info(message)
+        
         # Print all the scores for each class.
         message = f'[ Round: {round_number} Class Scores ]\n'
         for data_class in range(self.number_of_classes):
@@ -471,16 +472,5 @@ class Attacker(Client):
             else:
                 message += class_message + '\n'
         logging.info(message)
-
-        # Print the final summary of this test
-        temp = final_confusion_matrix.get_confusion_matrix()
-        message = f'[ Round: {round_number} Totals ' \
-                  f'| Attacker Test ' \
-                  f'| Total Time: {time.time() - start_time:.2f}s ' \
-                  f'| Loss: {losses.avg:.5f} ' \
-                  f'| Acc: {final_confusion_matrix.get_accuracy():.2f}% ' \
-                  f'| Final Conf Matrix: TP:{temp[0]}' \
-                  f' FP:{temp[1]}' \
-                  f' TN:{temp[2]}' \
-                  f' FN:{temp[3]} ]'
-        logging.info(message)
+        
+        return losses.avg, final_confusion_matrix.get_accuracy()

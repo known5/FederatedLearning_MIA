@@ -1,15 +1,14 @@
-import logging
 import os
-import time
 import sys
-from datetime import datetime
-
-import numpy.random
+import time
 import torch
 import yaml
+import logging
+import numpy.random
 
-from src.server import CentralServer
+from datetime import datetime
 from src.utils import get_duration
+from src.server import CentralServer
 
 if __name__ == '__main__':
     # read input value

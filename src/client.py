@@ -1,43 +1,64 @@
-import logging
 import time
-
-import torch.optim as optimizers
+import logging
 import torch.utils
-from torch.utils.data import DataLoader
+import torch.optim as optimizers
 
+from torch.utils.data import DataLoader
 from src.utils import AverageMeter, get_torch_loss_function
 
 
 class Client(object):
+    """
+     Client Class.
+
+     Used to simulate a client in the Federated Learning network.
+     Methods are for loading data, getting and setting the model and
+     training and testing on local data with a local model.
+
+     """
 
     def __init__(self, client_id, training_param, device, model):
-        """ Ja hier moet dus documentatie """
+        """
+        Client constructor method.
+
+        Parameters:
+            client_id: Used to identify the client.
+            training_param: Training parameters containing setting from the config.yaml file.
+            device: Device to be used when doing training and testing (CPU or Cuda GPU).
+            model: Copy of the global model used to train on the local data.
+        """
+        self.client_id = client_id
+        self.device = device
         self.__model = model
+        # training parameters.
         self.loss_function = get_torch_loss_function(training_param['loss_function'])
+        self.batch_size = training_param['train_batch_size']
+        # Optimizer parameters.
         self.optimizer_name = training_param['optimizer']
         self.learning_rate = training_param['learning_rate']
         self.momentum = training_param['momentum']
         self.weight_decay = training_param['weight_decay']
-
-        self.batch_size = training_param['train_batch_size']
-        self.client_id = client_id
-        self.device = device
-
+        # class shared variables used by methods are initialized here.
         self.training_data = None
         self.test_data = None
         self.training_dataloader = None
         self.testing_dataloader = None
-
+        # scores dictionary.
         self.local_results = {"loss": [], "accuracy": []}
 
     @property
     def model(self):
-        """ Ja hier moet dus documentatie """
+        """
+         Getter method for client model.
+         """
         return self.__model
 
     @model.setter
     def model(self, model):
-        """ Ja hier moet dus documentatie """
+        """
+         Setter method for client model, also initializes,
+         the optimizer with the new model parameters.
+         """
         self.optimizer = optimizers.__dict__[self.optimizer_name](
             params=model.parameters(),
             lr=self.learning_rate,
@@ -47,7 +68,10 @@ class Client(object):
         self.__model = model
 
     def load_data(self, training_data):
-        """ Ja hier moet dus documentatie """
+        """
+         Method for loading the local data set from the main server.
+         Creates a DataLoader object for training and testing.
+         """
         self.training_data = training_data
         self.training_dataloader = DataLoader(self.training_data,
                                               batch_size=self.batch_size,
@@ -60,15 +84,22 @@ class Client(object):
         logging.debug(message)
 
     def train(self, round_number):
-        """ Ja hier moet dus documentatie """
+        """
+         Training method for the client class.
+
+         Parameters:
+             round_number: number of the current epoch to be used for logging.
+         """
+        # Set model to training mode and transfer to device.
         self.model.train()
         self.model.to(self.device)
 
+        # load once to save time. To be used for calculating the accuracy.
         data_size = len(self.training_dataloader.dataset)
 
+        # Define attributes to keep track of scores during training
         batch_time = AverageMeter()
         losses = AverageMeter()
-
         start_time = time.time()
         correct = 0
         
@@ -104,18 +135,26 @@ class Client(object):
         self.model.to("cpu")
 
     def test(self, round_number):
-        """ Ja hier moet dus documentatie """
+        """
+         Testing method for the client class.
+
+         Parameters:
+             round_number: number of the current epoch to be used for logging.
+         """
+        # Set model to testing mode and transfer to device.
         self.model.eval()
         self.model.to(self.device)
 
+        # load once to save time. To be used for calculating the accuracy.
         data_size = len(self.training_dataloader.dataset)
 
-        losses = AverageMeter()
+        # Define attributes to keep track of scores during testing
         batch_time = AverageMeter()
+        losses = AverageMeter()
+        start_time = time.time()
         correct = 0
 
         with torch.no_grad():
-            start_time = time.time()
             for data, labels in self.training_dataloader:
                 # Transfer data to CPU or GPU.
                 data, labels = data.float().to(self.device), labels.long().to(self.device)
