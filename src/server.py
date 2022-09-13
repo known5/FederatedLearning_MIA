@@ -1,40 +1,19 @@
 import copy
-import logging
-import os
-import shutil
 import time
-
-import numpy as np
+import logging
 import torch
-from torch.utils.data import DataLoader
+import numpy as np
 
-from src.attacker import Attacker
 from src.client import Client
 from src.models import AlexNet
-from src.utils import load_dataset, AverageMeter, get_torch_loss_function
-
-
-def save_checkpoint(state, is_best, checkpoint='checkpoint', filename='checkpoint.pth.tar'):
-    filepath = os.path.join(checkpoint, filename)
-    torch.save(state, filepath)
-    if is_best:
-        shutil.copyfile(filepath, os.path.join(checkpoint, 'model_best.pth.tar'))
-
-
-def save_checkpoint_adversary(state, is_best, checkpoint='checkpoint', filename='checkpoint.pth.tar'):
-    filepath = os.path.join(checkpoint, filename)
-    torch.save(state, filepath)
-    if is_best:
-        shutil.copyfile(filepath, os.path.join(checkpoint, 'model_adversary_best.pth.tar'))
-
-
-def load_target_model(path, filename):
-    """ Ja hier moet dus documentatie """
-    model = AlexNet()
-    filepath = os.path.join(path, filename)
-    checkpoint = torch.load(filepath)
-    model.load_state_dict(checkpoint['state_dict'])
-    return model
+from src.attacker import Attacker
+from torch.utils.data import DataLoader
+from src.utils import load_dataset,\
+    AverageMeter,\
+    get_torch_loss_function,\
+    load_target_model,\
+    save_checkpoint, \
+    save_checkpoint_adversary
 
 
 class CentralServer(object):
@@ -128,7 +107,7 @@ class CentralServer(object):
         attacker_is_generated = False
         clients = []
         for client_id, dataset in enumerate(range(self.number_of_clients)):
-            if (self.do_passive_attack > 0 or self.do_active_attack > 0) and not attacker_is_generated:
+            if (self.do_passive_attack > 0 or self.do_active_attack != []) and not attacker_is_generated:
                 clients.append(Attacker(client_id + 1,
                                         training_param,
                                         attack_param,
@@ -202,7 +181,7 @@ class CentralServer(object):
             message = 'Distributed data among clients'
             logging.debug(message)
 
-        if self.do_passive_attack > 0 or self.do_active_attack > 0:
+        if self.do_passive_attack > 0 or self.do_active_attack != []:
             # If the condition below is met, sample member data from all clients
             if isinstance(self.attack_data_overlap, str) and self.attack_data_overlap == 'all':
                 # Send data files to attacker for inference
@@ -301,9 +280,9 @@ class CentralServer(object):
 
                 self.do_training(index)
                 # If checked, perform gradient ascent learning on the attacker dataset each round.
-                if self.do_active_attack > 0 and index % self.do_active_attack == 0:
-                    if index in [50, 100]:
-                        attacker.active_learning_rate *= 0.1
+                if index in self.do_active_attack and self.do_active_attack != []:
+                    # if index in [50, 100]:
+                        # attacker.active_learning_rate *= 0.1
                     attacker.gradient_ascent_attack(index)
 
                 self.aggregate_model()
@@ -333,7 +312,9 @@ class CentralServer(object):
                 attacker.train_attack(index, self.target_models_for_inference)
 
                 if self.eval_attack > 0 and index % self.eval_attack == 0:
-                    attacker.test_attack(index, self.target_models_for_inference)
+                    round_loss, round_accuracy = attacker.test_attack(index, self.target_models_for_inference)
+                    self.attack_results['loss'].append(round_loss)
+                    self.attack_results['accuracy'].append(round_accuracy)
 
                 if self.save_attack_model > 0 and index % self.save_attack_model == 0:
                     is_best = (round_accuracy >= max(self.attack_results['accuracy']))
@@ -345,9 +326,8 @@ class CentralServer(object):
                             'best_acc': is_best,
                             'optimizer': attacker.attack_optimizer.state_dict()
                         }, is_best=is_best,
-                            filename=f'_epoch_{index}'
-                                     f'_attack_clients_{self.number_of_clients}'
-                                     f'_batch_{attacker.attack_batch_size}',
+                            filename=f'_attack_clients_{self.number_of_clients}'
+                                     f'_batch_{attacker.attack_test_batch_size}',
                             checkpoint=self.attack_model_path
                         )
 
