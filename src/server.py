@@ -47,10 +47,12 @@ class CentralServer(object):
         self.number_of_clients = training_param['number_of_clients']
         self.number_of_training_rounds = training_param['training_rounds']
         self.loss_function = get_torch_loss_function(training_param['loss_function'])
+        self.adjust_lr_at_ = training_param['adjust_lr_at_']
         self.train_batch_size = training_param['train_batch_size']
         self.test_batch_size = training_param['test_batch_size']
         self.client_data_overlap = training_param['client_data_overlap']
-        self.if_overlap_client_dataset_size = training_param['if_overlap_client_dataset_size']
+        self.is_dataset_of_fixed_size = training_param['fixed_dataset']
+        self.dataset_size = training_param['dataset_size']
 
         self.results = {"loss": [], "accuracy": [0.0]}
         self.attack_results = {"loss": [], "accuracy": [0.0]}
@@ -68,10 +70,13 @@ class CentralServer(object):
                   f"| save_model: {self.save_model} \n" \
                   f"| clients: {self.number_of_clients} \n" \
                   f"| classes: {self.number_of_classes} \n" \
+                  f"| learning_rate_schedule: {self.adjust_lr_at_} \n" \
                   f"| train_batch_size: {self.train_batch_size} \n" \
                   f"| test_batch_siez: {self.test_batch_size} \n" \
                   f"| rounds: {self.number_of_training_rounds} \n" \
                   f"| overlap: {self.client_data_overlap} \n" \
+                  f"| fixed_dataset: {self.is_dataset_of_fixed_size} \n" \
+                  f"| fixed_dataset_size: {self.dataset_size} \n" \
                   f"| passive_attack: {self.do_passive_attack} \n" \
                   f"| active_attack: {self.do_active_attack} \n" \
                   f"| eval_attack: {self.eval_attack} \n" \
@@ -141,9 +146,17 @@ class CentralServer(object):
 
         if self.client_data_overlap == 0:
             # randomly split training data so each client has its own separate data set.
-            subset_length = len(training_data) // number_of_clients
-            training_data_split = [subset_length for _ in range(self.number_of_clients)]
-            remainder = len(training_data) % training_data_split[0]
+            if self.is_dataset_of_fixed_size == 1:
+                subset_list = []
+                for i in range(self.number_of_clients):
+                    subset_list.append(self.dataset_size)
+                training_data_split = subset_list
+                remainder = len(training_data) - (self.number_of_clients * self.dataset_size)
+            else:
+                subset_length = len(training_data) // number_of_clients
+                training_data_split = [subset_length for _ in range(self.number_of_clients)]
+                remainder = len(training_data) % training_data_split[0]
+                
             if not remainder == 0:
                 training_data_split.append(remainder)
             training_data_split = torch.utils.data.random_split(training_data, training_data_split)
@@ -167,7 +180,7 @@ class CentralServer(object):
 
             for client in self.clients:
                 temp_subset = []
-                for i in range(self.if_overlap_client_dataset_size):
+                for i in range(self.dataset_size):
                     temp_subset.append(training_data[temp_indices[i]])
                 client.load_data(temp_subset)
                 training_data_split.append(temp_subset)
@@ -274,15 +287,13 @@ class CentralServer(object):
             # If checked, do training cycle
             if self.train_model > 0 and index % self.train_model == 0:
                 # Adjust the learning rates at given epochs
-                if index in [50, 100]:
+                if index in self.adjust_lr_at_:
                     for client in self.clients:
                         client.learning_rate *= 0.1
 
                 self.do_training(index)
                 # If checked, perform gradient ascent learning on the attacker dataset each round.
                 if index in self.do_active_attack and self.do_active_attack != []:
-                    # if index in [50, 100]:
-                        # attacker.active_learning_rate *= 0.1
                     attacker.gradient_ascent_attack(index)
 
                 self.aggregate_model()
