@@ -1,16 +1,16 @@
 import copy
-import time
-import random
 import logging
+import random
+import time
 
 import torch
-import torch.utils
 import torch.optim as optimizers
-
-from .client import Client
-from src.models import AttackModel
+import torch.utils
 from torch.utils.data import DataLoader
+
+from src.models import AttackModel
 from src.utils import AverageMeter, get_torch_loss_function, ConfusionMatrix, encode_labels, create_one_hot_encoding
+from .client import Client
 
 
 class Attacker(Client):
@@ -66,7 +66,7 @@ class Attacker(Client):
                   f"| Active LR: {self.active_learning_rate} ]\n"
         logging.info(msg=message)
 
-    def load_attack_data(self, train_data, test_data):
+    def load_attack_data(self, train_data, test_data, client_indices, client_dataset_size):
         """ Ja hier moet dus documentatie """
         logging.debug(' Loading datasets for attacker')
         # Get distributions for attack data from server.
@@ -74,6 +74,8 @@ class Attacker(Client):
         # check is data sizes are correct:
         for length in distribution:
             assert length // 100 != 0 and length % 100 == 0
+        assert len(client_indices) >= client_dataset_size
+        assert len(client_indices) >= distribution[0] + distribution[1]
 
         train_member_length = distribution[0] // 100
         train_non_member_length = distribution[1] // 100
@@ -89,7 +91,7 @@ class Attacker(Client):
             low_member, high_member = target * 1000, (target + 1) * 1000
             low_non_member, high_non_member = target * 100, (target + 1) * 100
 
-            random_subset = list(range(low_member, high_member))
+            random_subset = list([x for x in client_indices if low_member <= x <= high_member])
             random.shuffle(random_subset)
 
             for _ in range(train_member_length):
@@ -120,7 +122,6 @@ class Attacker(Client):
     def gradient_ascent_attack(self, round_number):
         """ Ja hier moet dus documentatie """
         # Put model in training mode and load model onto device
-
         self.target_model = copy.deepcopy(self.model)
         self.active_attack_optimizer = optimizers.__dict__['Adam'](
             params=self.target_model.parameters(),
@@ -188,14 +189,14 @@ class Attacker(Client):
         temp_data_loader = DataLoader(member,
                                       batch_size=self.attack_train_batch_size // 2,
                                       shuffle=True,
-                                      num_workers=2,
+                                      num_workers=0,
                                       pin_memory=True
                                       )
 
         temp_data_loader_2 = DataLoader(non_member,
                                         batch_size=self.attack_train_batch_size // 2,
                                         shuffle=True,
-                                        num_workers=2,
+                                        num_workers=0,
                                         pin_memory=True
                                         )
 

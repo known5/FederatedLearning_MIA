@@ -1,5 +1,6 @@
 import copy
 import logging
+import random
 import time
 
 import numpy as np
@@ -137,7 +138,7 @@ class CentralServer(object):
     def load_datasets(self, data_name, data_path, number_of_clients):
         """ Ja hier moet dus documentatie """
         # load correct dataset from torchvision
-        training_data, test_data = load_dataset(data_path, data_name)
+        train_data, test_data = load_dataset(data_path, data_name)
         self.global_test_dataloader = DataLoader(test_data,
                                                  batch_size=self.test_batch_size,
                                                  shuffle=False,
@@ -145,76 +146,62 @@ class CentralServer(object):
                                                  pin_memory=True
                                                  )
 
-        # if self.client_data_overlap == 0:
-        #
-        #     for client in range(number_of_clients):
-        #
-        # else:
-        #
-        #     print('not implemented yet')
+        # gebruik list om aantal per class te weten
+        if self.is_dataset_of_fixed_size == 1:
+            data_size = self.dataset_size
+        else:
+            data_size = len(train_data) // self.number_of_clients
 
-        if self.client_data_overlap == 0:
-            # randomly split training data so each client has its own separate data set.
-            if self.is_dataset_of_fixed_size == 1:
-                subset_list = []
-                for i in range(self.number_of_clients):
-                    subset_list.append(self.dataset_size)
-                training_data_split = subset_list
-                remainder = len(training_data) - (self.number_of_clients * self.dataset_size)
-            else:
-                subset_length = len(training_data) // number_of_clients
-                training_data_split = [subset_length for _ in range(self.number_of_clients)]
-                remainder = len(training_data) % training_data_split[0]
-                
-            if not remainder == 0:
-                training_data_split.append(remainder)
-            training_data_split = torch.utils.data.random_split(training_data, training_data_split)
-
-            message = f"Splitting dataset of size {len(training_data)}" \
-                      f" into {self.number_of_clients}" \
-                      f" parts of size {len(training_data_split[0])}..."
-            logging.info(message)
-
-            # send data to clients for training.
-            for k, client in enumerate(self.clients):
-                client.load_data(training_data_split[k])
-            message = 'Distributed data among clients'
-            logging.debug(message)
+        client_choice_lists = []
+        if self.client_data_overlap == 1:
+            train_set = range(len(train_data))
+            for client in range(number_of_clients):
+                choices = np.random.choice(train_set, size=data_size, replace=True)
+                client_choice_lists.append(list(choices))
+                client_subset = torch.utils.data.Subset(train_data, choices)
+                self.clients[client].load_data(client_subset)
 
         else:
-            # Give each client a fixed amount of samples, randomly drawn from the entire dataset. overlap may occur
-            training_data_split = []
-            temp_indices = np.arange(len(training_data))
-            np.random.shuffle(temp_indices)
-
-            for client in self.clients:
-                temp_subset = []
-                for i in range(self.dataset_size):
-                    temp_subset.append(training_data[temp_indices[i]])
-                client.load_data(temp_subset)
-                training_data_split.append(temp_subset)
-                np.random.shuffle(temp_indices)
-
-            message = f"Splitting dataset of size {len(training_data)}" \
-                      f" into {self.number_of_clients}" \
-                      f" parts of size {len(training_data_split[0])}..."
-            logging.info(message)
-
-            message = 'Distributed data among clients'
-            logging.debug(message)
+            client_indices = []
+            for _ in range(self.number_of_clients):
+                client_indices.append([])
+            for data_class in range(self.number_of_classes):
+                # Set the boundaries for picking samples from the right classes
+                low, high = data_class * 1000, (data_class + 1) * 1000
+                random_subset = list(range(low, high))
+                random.shuffle(random_subset)
+                length = self.dataset_size // self.number_of_classes
+                for _ in range(length):
+                    for client_list in client_indices:
+                        client_list.append(random_subset.pop())
+            for client in range(number_of_clients):
+                choices = client_indices[client]
+                client_choice_lists.append(list(choices))
+                client_subset = torch.utils.data.Subset(train_data, choices)
+                self.clients[client].load_data(client_subset)
 
         if self.do_passive_attack > 0 or self.do_active_attack != []:
             # If the condition below is met, sample member data from all clients
             if isinstance(self.attack_data_overlap, str) and self.attack_data_overlap == 'all':
                 # Send data files to attacker for inference
-                self.clients[0].load_attack_data(training_data, test_data)
+                self.clients[0].load_attack_data(train_data, test_data)
             else:
                 # Only provide member samples for 1 or more clients.
-                attack_data = training_data_split[0]
-                for index in range(1, self.attack_data_overlap):
-                    attack_data = torch.utils.data.ConcatDataset([attack_data, training_data_split[index]])
+                attack_data_indices = []
+                for index in range(self.attack_data_overlap):
+                    attack_data_indices += client_choice_lists[index]
                     # Send data files to attacker for inference
-                self.clients[0].load_attack_data(attack_data, test_data)
+                self.clients[0].load_attack_data(train_data, test_data, attack_data_indices, data_size)
+
+        message = f"Dataset loaded and divided into {data_size} samples per client"
+        if self.client_data_overlap == 1:
+            message += ' with overlap '
+        else:
+            message += ' with no overlap '
+        logging.info(message)
+
+        message = 'Distributed data among clients'
+        logging.debug(message)
 
     def share_model_with_clients(self):
         """ Ja hier moet dus documentatie """
@@ -300,7 +287,7 @@ class CentralServer(object):
                     for client in self.clients:
                         client.learning_rate *= 0.1
 
-                # self.do_training(index)
+                self.do_training(index)
                 # If checked, perform gradient ascent learning on the attacker dataset each round.
                 if index in self.do_active_attack and self.do_active_attack != []:
                     attacker.gradient_ascent_attack(index)
