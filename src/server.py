@@ -1,17 +1,18 @@
 import copy
-import time
 import logging
-import torch
-import numpy as np
+import time
 
+import numpy as np
+import torch
+from torch.utils.data import DataLoader
+
+from src.attacker import Attacker
 from src.client import Client
 from src.models import AlexNet
-from src.attacker import Attacker
-from torch.utils.data import DataLoader
-from src.utils import load_dataset,\
-    AverageMeter,\
-    get_torch_loss_function,\
-    load_target_model,\
+from src.utils import load_dataset, \
+    AverageMeter, \
+    get_torch_loss_function, \
+    load_target_model, \
     save_checkpoint, \
     save_checkpoint_adversary
 
@@ -138,6 +139,14 @@ class CentralServer(object):
                                                  num_workers=2,
                                                  pin_memory=True
                                                  )
+
+        # if self.client_data_overlap == 0:
+        #
+        #     for client in range(number_of_clients):
+        #
+        # else:
+        #
+        #     print('not implemented yet')
 
         if self.client_data_overlap == 0:
             # randomly split training data so each client has its own separate data set.
@@ -278,7 +287,7 @@ class CentralServer(object):
                     for client in self.clients:
                         client.learning_rate *= 0.1
 
-                self.do_training(index)
+                # self.do_training(index)
                 # If checked, perform gradient ascent learning on the attacker dataset each round.
                 if index in self.do_active_attack and self.do_active_attack != []:
                     # if index in [50, 100]:

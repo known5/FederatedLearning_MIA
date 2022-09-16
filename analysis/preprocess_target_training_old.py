@@ -18,11 +18,11 @@ import pandas as pd
 
 
 # Variables
-filepath = '../log/Target/active/epoch_1/461_active_target_training.txt'
-filepath1 = '../log/Target/active/epoch_1/464_active_target_training.txt'
-filepath2 = '../log/Target/active/epoch_1/460_active_target_training.txt'
-filepath3 = '../log/Target/active/epoch_1/462_active_target_training.txt'
-filepath4 = '../log/Target/active/epoch_1/458_active_target_training.txt'
+filepath = '../log/Target/no_overlap/484_target_training_25.txt'
+filepath1 = '../log/Target/no_overlap/539_target_training_42.txt'
+filepath2 = '../log/Target/no_overlap/481_target_training_56.txt'
+filepath3 = '../log/Target/no_overlap/482_target_training_78.txt'
+filepath4 = '../log/Target/no_overlap/483_target_training_92.txt'
 
 paths = [('25', filepath),
          ('42', filepath1),
@@ -107,7 +107,7 @@ def convert_dataframe(data):
 
 if __name__ == "__main__":
 
-    with pd.ExcelWriter('../log/excel/target_training.xlsx') as writer:
+    with pd.ExcelWriter('../log/excel/target_training_no_overlap.xlsx') as writer:
         for path in paths:
             seed, file = path
             data = pd.read_csv(file, delimiter='INFO:root:', on_bad_lines='skip', engine='python', decimal=',')

@@ -1,19 +1,19 @@
 import pandas as pd
 
 ########################################################################################################################
-# # Variables
-# filepath = '../log/Attack/active/no_overlap/575_active_attack_25.txt'
-# filepath1 = '../log/Attack/active/no_overlap/577_active_attack_42.txt'
-# filepath2 = '../log/Attack/active/no_overlap/579_active_attack_56.txt'
-# filepath3 = '../log/Attack/active/no_overlap/572_active_attack_78.txt'
-# filepath4 = '../log/Attack/active/no_overlap/576_active_attack_92.txt'
-
 # Variables
-filepath = '../log/Attack/passive/no_overlap/536_passive_attack_25.txt'
-filepath1 = '../log/Attack/passive/no_overlap/560_passive_attack_42.txt'
-filepath2 = '../log/Attack/passive/no_overlap/571_passive_attack_56.txt'
-filepath3 = '../log/Attack/passive/no_overlap/540_passive_attack_78.txt'
-filepath4 = '../log/Attack/passive/no_overlap/535_passive_attack_92.txt'
+filepath = '../log/Attack/active/5000_5000_case/631_active_attack_25.txt'
+filepath1 = '../log/Attack/active/5000_5000_case/630_active_attack_42.txt'
+filepath2 = '../log/Attack/active/5000_5000_case/628_active_attack_56.txt'
+filepath3 = '../log/Attack/active/5000_5000_case/629_active_attack_78.txt'
+filepath4 = '../log/Attack/active/5000_5000_case/627_active_attack_92.txt'
+
+# # Variables
+# filepath = '../log/Attack/passive/no_overlap/536_passive_attack_25.txt'
+# filepath1 = '../log/Attack/passive/no_overlap/560_passive_attack_42.txt'
+# filepath2 = '../log/Attack/passive/no_overlap/571_passive_attack_56.txt'
+# filepath3 = '../log/Attack/passive/no_overlap/540_passive_attack_78.txt'
+# filepath4 = '../log/Attack/passive/no_overlap/535_passive_attack_92.txt'
 
 paths = [('25', filepath),
          ('42', filepath1),
@@ -85,7 +85,7 @@ def convert_dataframe(data):
 
 if __name__ == "__main__":
 
-    with pd.ExcelWriter('../log/excel/passive_attack_no_overlap.xlsx') as writer:
+    with pd.ExcelWriter('../log/excel/active_attack_rq1_5000_case.xlsx') as writer:
         for path in paths:
             seed, file = path
             data = pd.read_csv(file, delimiter='INFO:root:', on_bad_lines='skip', engine='python', decimal=',')
