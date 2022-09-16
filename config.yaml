@@ -25,11 +25,13 @@ attack_settings:
 training_settings:
   number_of_clients: 4
   client_data_overlap: 1
-  if_overlap_client_dataset_size: 30000
+  fixed_dataset: 1
+  dataset_size: 30000
   training_rounds: 3
   learning_rate: 0.01
   momentum: 0.9
   weight_decay: 0.0005
+  adjust_lr_at_: [50, 100]
   train_batch_size: 64
   test_batch_size: 64
   loss_function: 'CrossEntropyLoss'
